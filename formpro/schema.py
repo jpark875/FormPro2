@@ -20,11 +20,53 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from enum import IntEnum
+from enum import Enum, IntEnum
 
 import numpy as np
 
 NUM_LANDMARKS = 33
+
+
+class Side(IntEnum):
+    """Anatomical side. Distinct from camera-near/camera-far, which is a viewing
+    relationship resolved per frame by the kinematics engine."""
+
+    LEFT = 0
+    RIGHT = 1
+
+    @property
+    def other(self) -> Side:
+        return Side.RIGHT if self is Side.LEFT else Side.LEFT
+
+
+class Phase(str, Enum):
+    """Rep cycle vocabulary.
+
+    Shared verbatim between the live segmenter and the reference dataset. Both sides
+    of the comparison must speak the same words or Phase 5 would be aligning a live
+    ``bottom`` against a reference ``eccentric`` and calling the difference form.
+    """
+
+    SETUP = "setup"           # standing, un-racking, bracing
+    ECCENTRIC = "eccentric"   # descent
+    BOTTOM = "bottom"         # the hole; velocity approaching zero
+    CONCENTRIC = "concentric"  # ascent
+    RECOVERY = "recovery"     # return to standing
+
+
+class FormLabel(str, Enum):
+    """Per-frame form classification.
+
+    Evaluated per frame, not per file: a good-morning squat typically has a clean
+    eccentric and breaks only once the concentric begins, so one sequence legitimately
+    transitions between labels partway through.
+    """
+
+    OPTIMAL = "optimal_form"
+    HIGH_SQUAT = "error_high_squat"
+    KNEE_VALGUS = "error_knee_valgus"
+    GOOD_MORNING = "error_good_morning"
+    HEEL_LIFT = "error_heel_lift"
 
 
 class LM(IntEnum):
@@ -76,6 +118,19 @@ SQUAT_JOINTS: tuple[LM, ...] = (
     LM.LEFT_HEEL, LM.RIGHT_HEEL,
     LM.LEFT_FOOT_INDEX, LM.RIGHT_FOOT_INDEX,
 )
+
+#: Per-side landmark lookup, so kinematics can be written once and applied to whichever
+#: side turns out to be nearest the camera.
+SIDE_LANDMARKS: dict[Side, dict[str, LM]] = {
+    Side.LEFT: {
+        "shoulder": LM.LEFT_SHOULDER, "hip": LM.LEFT_HIP, "knee": LM.LEFT_KNEE,
+        "ankle": LM.LEFT_ANKLE, "heel": LM.LEFT_HEEL, "toe": LM.LEFT_FOOT_INDEX,
+    },
+    Side.RIGHT: {
+        "shoulder": LM.RIGHT_SHOULDER, "hip": LM.RIGHT_HIP, "knee": LM.RIGHT_KNEE,
+        "ankle": LM.RIGHT_ANKLE, "heel": LM.RIGHT_HEEL, "toe": LM.RIGHT_FOOT_INDEX,
+    },
+}
 
 #: Bone connectivity for the tracked subset, used by the overlay renderer.
 SQUAT_SKELETON: tuple[tuple[LM, LM], ...] = (
