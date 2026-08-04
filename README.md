@@ -109,7 +109,86 @@ Reference data is JSON containing pre-computed, normalized angles. Raw pixel coo
 not used, so the dataset stays invariant to camera resolution, subject distance and lifter
 height.
 
-The exact schema is still to be supplied and will be documented here before Phase 4 begins.
+```json
+{
+  "metadata": {
+    "exercise": "barbell_back_squat",
+    "camera_angle": "45_oblique",
+    "dataset_type": "reference_optimal"
+  },
+  "subject_proportions": {
+    "femur_to_torso_ratio": 1.12
+  },
+  "frames": [
+    {
+      "frame_id": 1,
+      "phase": "eccentric",
+      "angles": {
+        "hip_flexion": 175.2,
+        "knee_flexion": 170.5,
+        "ankle_dorsiflexion": 90.0,
+        "back_to_vertical": 10.5,
+        "knee_to_hip_width_ratio": 1.05
+      },
+      "form_label": "optimal_form"
+    }
+  ]
+}
+```
+
+`metadata.camera_angle` is validated on load. A file recorded at a different angle is
+rejected rather than silently compared against 45-degree thresholds.
+
+`subject_proportions.femur_to_torso_ratio` is what makes cross-body comparison possible. It
+is the reference subject's build, and Phase 5 has to account for the gap between it and the
+live lifter's ratio, rather than assuming both were built the same way.
+
+### Angle conventions
+
+All angles are in degrees and are **included angles between two segments, where 180 means
+fully extended**. This is not the clinical range-of-motion convention, where a straight knee
+is 0 degrees of flexion. The sample frame is a lifter who has just begun descending, which
+is why the values sit near the extended end:
+
+| Field | Standing | Bottom of squat | Meaning |
+|---|---|---|---|
+| `hip_flexion` | ~175 | decreases | torso relative to thigh |
+| `knee_flexion` | ~170 | decreases | thigh relative to calf |
+| `ankle_dorsiflexion` | ~90 | decreases | calf relative to foot, 90 is neutral shin |
+| `back_to_vertical` | ~10 | increases | torso away from vertical, 0 is upright |
+| `knee_to_hip_width_ratio` | ~1.05 | decreases on valgus | inter-knee horizontal distance over hip width |
+
+`knee_to_hip_width_ratio` is the valgus measure described under camera placement. It stays
+in the X/Y plane rather than depending on Z, and being a ratio it is already normalized
+against the lifter's own hip width.
+
+Phase 3 will emit these exact field names and this exact convention so live and reference
+frames are directly comparable without an adapter layer between them.
+
+### Open questions on the schema
+
+These do not block Phase 3, which computes the angles above regardless. They do shape
+Phase 4 and Phase 5.
+
+1. **No temporal field.** `frame_id` is an ordinal with no timestamp and no frame rate.
+   `error_good_morning` is defined by the hips rising faster than the shoulders, which is a
+   rate and cannot be computed from ordinals alone if capture rate ever varies. Suggested
+   fix: `timestamp_ms` per frame, or `fps` in `metadata` if capture is reliably fixed-rate.
+2. **Bilateral collapse.** `hip_flexion`, `knee_flexion` and `ankle_dorsiflexion` are single
+   scalars, but a lifter has two of each and asymmetry is diagnostic. Are these averaged, or
+   taken from the camera-near side, which the 45-degree view observes best? Per-side fields
+   would preserve the signal.
+3. **`phase` vocabulary.** `eccentric` is shown. The live segmenter must emit the identical
+   vocabulary, so the full set needs stating, including whether standing and bottom holds
+   get their own values or fold into the two movement phases.
+4. **`dataset_type` versus `form_label`.** One is file-level, one is per-frame. May a single
+   file mix frame labels? A rep that descends cleanly and breaks on the ascent is the normal
+   presentation of `error_good_morning`, so mixed labelling is likely wanted.
+5. **Coverage of `femur_to_torso_ratio`.** Dynamically adjusting the back-angle threshold by
+   build requires reference subjects at several ratios. If every file records 1.12 there is
+   only one anchor point and nothing to interpolate between.
+
+A `schema_version` field in `metadata` would also be worth adding before the set grows.
 
 ## Coordinate conventions
 
@@ -136,6 +215,6 @@ valgus. Display mirroring is applied at render time only, in Phase 6.
 | 1 | Project setup and architecture | done |
 | 2 | Camera and pose ingestion | done |
 | 3 | Biomechanical normalization engine | not started |
-| 4 | Dataset ingestion and preprocessing | not started, blocked on dataset schema |
+| 4 | Dataset ingestion and preprocessing | not started, schema received |
 | 5 | Real-time comparison logic | not started |
 | 6 | UI and feedback overlay | not started |
