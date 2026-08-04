@@ -1,0 +1,7 @@
+# Pin LF in both the object store and the working tree, regardless of the
+# contributor's global core.autocrlf. Without this, a Windows clone checks out
+# CRLF and every file shows as modified against an LF working copy.
+* text=auto eol=lf
+
+# Model bundles are binary; never apply eol conversion to them.
+*.task binary
