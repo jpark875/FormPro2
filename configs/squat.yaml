@@ -1,0 +1,33 @@
+# FormPro2 configuration — barbell back squat.
+# Every tunable lives here. Modules take a config object; they never hardcode numbers.
+
+exercise: barbell_back_squat
+
+camera:
+  source: 0            # device index, or a path/URL string to replay a file
+  width: 1280
+  height: 720
+  fps: 30
+  backend: auto        # auto | dshow | msmf | v4l2 | ffmpeg
+  warmup_frames: 5     # discarded while the sensor settles on exposure/white balance
+  read_timeout_s: 2.0
+
+pose:
+  variant: heavy       # lite | full | heavy — heavy is the most accurate in Z
+  model_dir: models
+  min_detection_confidence: 0.6
+  min_presence_confidence: 0.6
+  min_tracking_confidence: 0.6
+
+  # A joint below this visibility is treated as unmeasured rather than trusted.
+  # Downstream phases must skip findings that depend on an unmeasured joint instead
+  # of silently analysing a hallucinated coordinate.
+  min_visibility: 0.5
+
+  smoothing:
+    enabled: true
+    # One-Euro filter. Raise `beta` if fast reps feel laggy; raise `min_cutoff` if the
+    # skeleton jitters while you hold the bottom position.
+    min_cutoff: 1.2
+    beta: 0.35
+    d_cutoff: 1.0

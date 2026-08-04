@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Pose model binaries are fetched by scripts/fetch_model.py, not committed.
+models/*.task
+
+# Captured sessions / recorded reference clips
+data/recordings/
+data/raw/
+*.mp4
+*.avi
