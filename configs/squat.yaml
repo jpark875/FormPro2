@@ -31,3 +31,59 @@ pose:
     min_cutoff: 1.2
     beta: 0.35
     d_cutoff: 1.0
+
+kinematics:
+  # Depth-axis attenuation for ANGLE measurement only. 1.0 = true 3D angle,
+  # 0.0 = projected onto the image plane. At a 45-degree view, full 3D inherits
+  # BlazePose's depth noise while pure projection under-reads flexion, so this sits
+  # between them. Segment LENGTHS always use full 3D, since foreshortening correction
+  # is exactly what the depth axis is for.
+  z_weight: 0.6
+
+  # Camera-near side resolution. Raise the hysteresis if the near side flips mid-rep.
+  side_ema_alpha: 0.15
+  side_hysteresis_m: 0.02
+
+  # Rolling window for segment-length calibration. At 30 fps, 150 frames is ~5 s and
+  # 45 frames is ~1.5 s before proportions are first reported.
+  calibration_window_frames: 150
+  calibration_min_frames: 45
+
+  # (femur_to_torso_ratio, max back_to_vertical degrees). A long femur forces a more
+  # horizontal torso to keep the bar over midfoot, so the tolerable lean grows with the
+  # ratio. Fallback only: Phase 5 should derive this band from the corpus instead.
+  back_angle_anchors:
+    - [0.85, 38.0]
+    - [1.30, 52.0]
+
+  # The camera-far side is partially occluded at 45 degrees, so it contributes to the
+  # comparison at reduced weight rather than being trusted equally or thrown away.
+  camera_far_weight: 0.35
+  # knee_to_hip_width_ratio is ~1.0 while angles are ~100; without rescaling, a distance
+  # metric would effectively ignore the only frontal-plane feature available.
+  width_ratio_scale_deg: 60.0
+
+phases:
+  velocity_window_ms: 150
+  max_gap_ms: 250
+
+  # Leg-lengths per second. Normalizing by the lifter's own leg length is what lets one
+  # threshold set cover every body size.
+  move_velocity: 0.15
+  still_velocity: 0.06
+
+  # Hip height as a fraction of leg length: ~1.0 standing, ~0.5 at depth.
+  standing_height: 0.95
+  descended_height: 0.90
+
+  # Consecutive frames a transition must hold before it commits. A flickering phase is
+  # worse than a lagging one, since Phase 5 keys its comparison window off the phase.
+  min_dwell_frames: 3
+
+dataset:
+  root: data/reference
+  expected_exercise: barbell_back_squat
+  accepted_camera_angles: ["45_oblique_anterior"]
+  legacy_camera_angles: ["45_oblique"]
+  max_timestamp_gap_ms: 250
+  min_ratio_span: 0.15

@@ -58,10 +58,70 @@ class PoseConfig:
 
 
 @dataclass(frozen=True)
+class KinematicsConfig:
+    #: Depth-axis attenuation applied when measuring angles. 1.0 is a true 3D angle,
+    #: 0.0 projects onto the image plane. See the kinematics module docstring for why
+    #: neither extreme suits a 45-degree view. Segment *lengths* ignore this.
+    z_weight: float = 0.6
+
+    side_ema_alpha: float = 0.15
+    side_hysteresis_m: float = 0.02
+
+    calibration_window_frames: int = 150
+    calibration_min_frames: int = 45
+
+    #: (femur_to_torso_ratio, max back_to_vertical degrees) anchors, interpolated
+    #: linearly. Fallback only, until Phase 5 derives the band from the corpus.
+    back_angle_anchors: tuple[tuple[float, float], ...] = ((0.85, 38.0), (1.30, 52.0))
+
+    #: Distance-metric weight for the partially occluded camera-far side.
+    camera_far_weight: float = 0.35
+    #: Rescales the dimensionless width ratio into the angles' degree range.
+    width_ratio_scale_deg: float = 60.0
+
+
+@dataclass(frozen=True)
+class PhaseConfig:
+    velocity_window_ms: int = 150
+    #: Longer than this between frames and the velocity fit is discarded rather than
+    #: interpolated across the gap.
+    max_gap_ms: int = 250
+
+    #: Leg-lengths per second. Body-size normalized, so one set of thresholds fits all.
+    move_velocity: float = 0.15
+    still_velocity: float = 0.06
+
+    #: Hip height as a fraction of leg length: ~1.0 standing, ~0.5 at depth.
+    standing_height: float = 0.95
+    descended_height: float = 0.90
+
+    min_dwell_frames: int = 3
+
+
+@dataclass(frozen=True)
+class DatasetConfig:
+    root: str = "data/reference"
+    expected_exercise: str = "barbell_back_squat"
+    accepted_camera_angles: tuple[str, ...] = ("45_oblique_anterior",)
+    legacy_camera_angles: tuple[str, ...] = ("45_oblique",)
+    max_timestamp_gap_ms: int = 250
+    #: Warn below this spread in femur_to_torso_ratio across the corpus; a narrow
+    #: corpus makes the build-adjusted band nominally dynamic but effectively fixed.
+    min_ratio_span: float = 0.15
+
+    def resolved_root(self, project_root: Path = PROJECT_ROOT) -> Path:
+        path = Path(self.root)
+        return path if path.is_absolute() else project_root / path
+
+
+@dataclass(frozen=True)
 class AppConfig:
     exercise: str = "barbell_back_squat"
     camera: CameraConfig = CameraConfig()
     pose: PoseConfig = PoseConfig()
+    kinematics: KinematicsConfig = KinematicsConfig()
+    phases: PhaseConfig = PhaseConfig()
+    dataset: DatasetConfig = DatasetConfig()
 
     @classmethod
     def load(cls, path: str | Path | None = None) -> AppConfig:
