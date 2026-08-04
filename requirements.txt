@@ -1,0 +1,11 @@
+# FormPro2 — runtime dependencies
+#
+# NOTE ON OPENCV: mediapipe depends on opencv-contrib-python. Do NOT also install
+# `opencv-python` — the two packages install the same `cv2` module and shadow each
+# other, producing missing-symbol errors that are painful to diagnose. The contrib
+# build is a strict superset, so it is the one we pin.
+
+mediapipe>=1.0,<2
+opencv-contrib-python>=4.10
+numpy>=1.26
+PyYAML>=6.0,<7
