@@ -48,13 +48,14 @@ FormPro2/
 │   ├── capture.py               threaded camera, drop-old buffering
 │   ├── pose_estimator.py        BlazePose backend behind a Protocol
 │   ├── video_processor.py       orchestrates capture into pose
-│   ├── kinematics.py            Phase 3: segment lengths, ratios, joint angles
-│   ├── dataset_loader.py        Phase 4: reference set ingestion
-│   ├── phases.py                Phase 4: eccentric/concentric segmentation
+│   ├── kinematics.py            segment lengths, ratios, joint angles, features
+│   ├── phases.py                rep cycle segmentation from hip trajectory
+│   ├── dataset_loader.py        reference set ingestion and corpus indexing
 │   └── form_analyzer.py         Phase 5: DTW / similarity comparison engine
 ├── scripts/
 │   ├── fetch_model.py           downloads the BlazePose .task binary
-│   └── smoke_test_pose.py       ingestion diagnostic viewer, not the real UI
+│   ├── smoke_test_pose.py       ingestion diagnostic viewer, not the real UI
+│   └── validate_dataset.py      checks a reference directory against the contract
 └── tests/
 ```
 
@@ -103,92 +104,180 @@ Two consequences for Phase 3:
   between the knee joints, normalized against hip width, which keeps it in the well-observed
   X/Y plane.
 
+## Normalization
+
+Three things make a 5'2" lifter comparable to a corpus recorded by a 6'4" one. All of
+them happen in `kinematics.py`, which is the only normalization path in the system.
+
+1. Angles instead of positions. A joint angle is already scale-free.
+2. Ratios instead of distances. Knee separation is divided by that lifter's own hip
+   width, hip height by that lifter's own leg length. Both come out dimensionless.
+3. Proportions as context, not correction. `femur_to_torso_ratio` never adjusts a
+   measurement. It is carried alongside it, because a 45-degree forward lean is sound on
+   a long-femur lifter and a good-morning on a short-femur one. Phase 5 interpolates the
+   acceptable band from the corpus using this ratio.
+
+Segment lengths are calibrated over a rolling window and frozen once enough frames have
+accumulated, rather than recomputed per frame. A per-frame estimate would let the
+tolerance band wobble mid-rep on measurement noise alone.
+
+### The depth axis is treated differently for angles and for lengths
+
+Z is BlazePose's least reliable output, and the two uses have opposite requirements.
+
+Angles attenuate Z by `kinematics.z_weight`. At `1.0` these are true 3D angles; at `0.0`
+they are projected onto the image plane. Neither extreme suits a 45-degree view: full 3D
+inherits the depth noise, while pure projection systematically under-reads flexion
+because the sagittal plane sits at 45 degrees to the image plane. The default of `0.6`
+sits between them.
+
+Segment lengths use full 3D with no attenuation, because attenuating Z would shorten any
+limb pointing toward the camera, and correcting exactly that foreshortening is what the
+depth axis is for. Depth noise is handled there by taking a median over the window.
+
+This leaves a known, systematic bias in the angles, which is acceptable only because the
+bias is identical on both sides of the comparison. That holds if the reference corpus was
+produced by this same engine at this same camera angle. **If your corpus came from a
+different pipeline computing true 3D angles, it will sit at a constant offset from live
+data and every threshold will be wrong by that offset.** `KinematicFrame.to_json_frame()`
+exists so reference files can be generated from this engine directly; see
+`tests/test_integration.py` for a worked example.
+
+The valgus metric sidesteps the problem entirely. `knee_to_hip_width_ratio` uses X
+separation only: at any camera yaw the knee axis and the hip axis are foreshortened by
+the same cosine, so dividing one by the other cancels it. This is verified against
+rotated poses in the test suite.
+
+## Rep cycle
+
+`phases.py` segments the lift by tracking hip height over time. The vocabulary is shared
+verbatim with the reference dataset, since Phase 5 aligns like against like:
+
+| Phase | Meaning |
+|---|---|
+| `setup` | standing, un-racking, bracing |
+| `eccentric` | descent |
+| `bottom` | the hole; velocity approaching zero |
+| `concentric` | ascent |
+| `recovery` | return to standing |
+
+Velocity is a least-squares slope over a fixed time window using capture timestamps,
+never a difference over frame counts. Phase 2 deliberately drops frames when inference
+falls behind, so consecutive frames are not evenly spaced and a per-frame delta would
+read a dropped frame as sudden acceleration. Both position and velocity are divided by
+the lifter's own leg length, so one threshold set covers every body size.
+
+Two safeguards worth knowing about:
+
+- Every transition must hold for `min_dwell_frames` before it commits. A flickering
+  phase is worse than a lagging one, because Phase 5 keys its comparison window off the
+  phase.
+- A rep may only begin from a standing position the segmenter actually observed. After a
+  tracking dropout, or at startup with the lifter already mid-squat, the partial rep is
+  discarded rather than scored on the fraction that happened to be visible.
+
 ## Reference dataset format
 
-Reference data is JSON containing pre-computed, normalized angles. Raw pixel coordinates are
-not used, so the dataset stays invariant to camera resolution, subject distance and lifter
-height.
+Reference data is JSON containing pre-computed, normalized angles. Raw pixel coordinates
+are not used, so the dataset stays invariant to camera resolution, subject distance and
+lifter height.
 
 ```json
 {
   "metadata": {
     "exercise": "barbell_back_squat",
-    "camera_angle": "45_oblique",
-    "dataset_type": "reference_optimal"
+    "camera_angle": "45_oblique_anterior",
+    "dataset_type": "reference_good_morning_error",
+    "fps_target": 30
   },
   "subject_proportions": {
-    "femur_to_torso_ratio": 1.12
+    "femur_to_torso_ratio": 1.12,
+    "tibia_to_femur_ratio": 0.85
   },
   "frames": [
     {
-      "frame_id": 1,
-      "phase": "eccentric",
+      "frame_id": 142,
+      "timestamp_ms": 4733,
+      "phase": "concentric",
       "angles": {
-        "hip_flexion": 175.2,
-        "knee_flexion": 170.5,
-        "ankle_dorsiflexion": 90.0,
-        "back_to_vertical": 10.5,
-        "knee_to_hip_width_ratio": 1.05
+        "camera_near": {
+          "hip_flexion": 110.5,
+          "knee_flexion": 125.0,
+          "ankle_dorsiflexion": 85.2,
+          "back_to_vertical": 45.1
+        },
+        "camera_far": {
+          "hip_flexion": 111.0,
+          "knee_flexion": 124.5,
+          "ankle_dorsiflexion": 86.0,
+          "back_to_vertical": 45.3
+        },
+        "global": {
+          "knee_to_hip_width_ratio": 0.95
+        }
       },
-      "form_label": "optimal_form"
+      "form_label": "error_good_morning"
     }
   ]
 }
 ```
 
-`metadata.camera_angle` is validated on load. A file recorded at a different angle is
-rejected rather than silently compared against 45-degree thresholds.
+Validate a directory before trusting it. This reports every bad file in one pass, rather
+than stopping at the first:
 
-`subject_proportions.femur_to_torso_ratio` is what makes cross-body comparison possible. It
-is the reference subject's build, and Phase 5 has to account for the gap between it and the
-live lifter's ratio, rather than assuming both were built the same way.
+```powershell
+python scripts/validate_dataset.py data/reference
+```
 
 ### Angle conventions
 
-All angles are in degrees and are **included angles between two segments, where 180 means
-fully extended**. This is not the clinical range-of-motion convention, where a straight knee
-is 0 degrees of flexion. The sample frame is a lifter who has just begun descending, which
-is why the values sit near the extended end:
+All angles are in degrees and are included angles between two segments, where 180 means
+fully extended. This is not the clinical range-of-motion convention, where a straight
+knee is 0 degrees of flexion.
 
 | Field | Standing | Bottom of squat | Meaning |
 |---|---|---|---|
-| `hip_flexion` | ~175 | decreases | torso relative to thigh |
-| `knee_flexion` | ~170 | decreases | thigh relative to calf |
-| `ankle_dorsiflexion` | ~90 | decreases | calf relative to foot, 90 is neutral shin |
-| `back_to_vertical` | ~10 | increases | torso away from vertical, 0 is upright |
-| `knee_to_hip_width_ratio` | ~1.05 | decreases on valgus | inter-knee horizontal distance over hip width |
+| `hip_flexion` | 180 | decreases | torso relative to thigh |
+| `knee_flexion` | 180 | decreases | thigh relative to calf |
+| `ankle_dorsiflexion` | 90 | decreases | shin relative to the foot's long axis |
+| `back_to_vertical` | 0 | increases | torso away from vertical |
+| `knee_to_hip_width_ratio` | ~1.0 | decreases on valgus | inter-knee X separation over hip width |
 
-`knee_to_hip_width_ratio` is the valgus measure described under camera placement. It stays
-in the X/Y plane rather than depending on Z, and being a ratio it is already normalized
-against the lifter's own hip width.
+`camera_near` is the side facing the camera, resolved per frame from Z depth with
+hysteresis so it cannot flip mid-rep. It is the reliable side for sagittal measures.
+`camera_far` is partially occluded at 45 degrees and enters the Phase 5 distance metric
+at reduced weight (`kinematics.camera_far_weight`) rather than being trusted equally or
+discarded. Anatomical left and right are preserved throughout; the near/far split is a
+viewing relationship layered on top.
 
-Phase 3 will emit these exact field names and this exact convention so live and reference
-frames are directly comparable without an adapter layer between them.
+`back_to_vertical` is per side because it is measured from that side's own shoulder-hip
+vector, which makes asymmetric torso lean visible rather than averaged away.
 
-### Open questions on the schema
+### Loader behaviour
 
-These do not block Phase 3, which computes the angles above regardless. They do shape
-Phase 4 and Phase 5.
+Validation is strict and failures raise rather than warn. A silently skipped reference
+file does not break anything visibly, it just removes an anchor point, and the tolerance
+band then narrows around whichever builds happened to survive. Rejected on load:
 
-1. **No temporal field.** `frame_id` is an ordinal with no timestamp and no frame rate.
-   `error_good_morning` is defined by the hips rising faster than the shoulders, which is a
-   rate and cannot be computed from ordinals alone if capture rate ever varies. Suggested
-   fix: `timestamp_ms` per frame, or `fps` in `metadata` if capture is reliably fixed-rate.
-2. **Bilateral collapse.** `hip_flexion`, `knee_flexion` and `ankle_dorsiflexion` are single
-   scalars, but a lifter has two of each and asymmetry is diagnostic. Are these averaged, or
-   taken from the camera-near side, which the 45-degree view observes best? Per-side fields
-   would preserve the signal.
-3. **`phase` vocabulary.** `eccentric` is shown. The live segmenter must emit the identical
-   vocabulary, so the full set needs stating, including whether standing and bottom holds
-   get their own values or fold into the two movement phases.
-4. **`dataset_type` versus `form_label`.** One is file-level, one is per-frame. May a single
-   file mix frame labels? A rep that descends cleanly and breaks on the ascent is the normal
-   presentation of `error_good_morning`, so mixed labelling is likely wanted.
-5. **Coverage of `femur_to_torso_ratio`.** Dynamically adjusting the back-angle threshold by
-   build requires reference subjects at several ratios. If every file records 1.12 there is
-   only one anchor point and nothing to interpolate between.
+- `camera_angle` outside the accepted set. `45_oblique` is accepted as a legacy alias
+  with a warning; anything else fails, because comparing against a differently-framed
+  recording presents as consistent form error.
+- Non-monotonic timestamps, or a gap wider than `dataset.max_timestamp_gap_ms`. Velocity
+  is undefined on non-monotonic time, and a rep cannot be reconstructed across a long
+  dropout.
+- Any `phase` or `form_label` outside the enums, any angle outside 0-180, any null.
 
-A `schema_version` field in `metadata` would also be worth adding before the set grows.
+`form_label` is evaluated per frame, so a single file transitions between labels partway
+through. This is the normal presentation of a good-morning squat: a clean eccentric that
+breaks once the concentric begins. `dataset_type` records the file's dominant intent.
+`ReferenceSequence.label_transitions()` exposes the boundary directly.
+
+`load_corpus` reads a directory into a `ReferenceCorpus` indexed by
+`femur_to_torso_ratio`, with `bracketing()` returning the nearest reference below and
+above a live lifter's build so Phase 5 can interpolate rather than snap to the nearest.
+Either side comes back `None` when the lifter falls outside the corpus, which Phase 5
+must treat as extrapolation. A corpus spanning less than `dataset.min_ratio_span` warns:
+the band is then nominally dynamic but effectively fixed to one body type.
 
 ## Coordinate conventions
 
@@ -214,7 +303,7 @@ valgus. Display mirroring is applied at render time only, in Phase 6.
 |---|---|---|
 | 1 | Project setup and architecture | done |
 | 2 | Camera and pose ingestion | done |
-| 3 | Biomechanical normalization engine | not started |
-| 4 | Dataset ingestion and preprocessing | not started, schema received |
+| 3 | Biomechanical normalization engine | done |
+| 4 | Dataset ingestion and preprocessing | done |
 | 5 | Real-time comparison logic | not started |
 | 6 | UI and feedback overlay | not started |

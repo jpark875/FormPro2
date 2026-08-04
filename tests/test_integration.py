@@ -1,0 +1,137 @@
+"""End-to-end check across Phases 3 and 4.
+
+Drives a synthetic squat through the kinematics engine and the segmenter, exports the
+result as a reference file, and reads it back through the dataset loader. This is the
+test that would catch the failure the architecture is built to prevent: live and
+reference data diverging in field names, units or ordering.
+
+The synthetic lifter has rigid segments, so calibrated proportions are known exactly and
+any drift in them is a real bug rather than an artefact of the fixture.
+"""
+
+from __future__ import annotations
+
+import json
+import math
+
+import numpy as np
+import pytest
+
+from formpro.config import DatasetConfig, KinematicsConfig, PhaseConfig
+from formpro.dataset_loader import load_sequence
+from formpro.kinematics import KinematicsEngine, to_feature_vector
+from formpro.phases import PhaseSegmenter
+from formpro.schema import FormLabel, Phase
+
+from .support import lerp_joints, make_pose
+
+
+def squat_poses(fps: int = 30):
+    """Standing, descend, pause, ascend, stand — as full poses, not just heights."""
+    dt = 1000 // fps
+    schedule: list[float] = []
+    schedule += [0.0] * int(1.5 * fps)
+    schedule += [i / (1.2 * fps) for i in range(int(1.2 * fps))]
+    schedule += [1.0] * int(0.4 * fps)
+    schedule += [1.0 - i / (1.2 * fps) for i in range(int(1.2 * fps))]
+    schedule += [0.0] * int(1.0 * fps)
+
+    for i, t in enumerate(schedule):
+        yield make_pose(index=i, timestamp_ms=i * dt, joints=lerp_joints(t))
+
+
+def test_fixture_segments_are_rigid():
+    """Guards the fixture: a stretching femur would invalidate the proportion checks."""
+    for t in (0.0, 0.25, 0.5, 0.75, 1.0):
+        joints = lerp_joints(t)
+        femur = np.linalg.norm(np.subtract(joints["knee"], joints["hip"]))
+        tibia = np.linalg.norm(np.subtract(joints["ankle"], joints["knee"]))
+        torso = np.linalg.norm(np.subtract(joints["shoulder"], joints["hip"]))
+        assert femur == pytest.approx(0.45, abs=0.02)
+        assert tibia == pytest.approx(0.40, abs=0.02)
+        assert torso == pytest.approx(0.50, abs=0.02)
+
+
+def run_pipeline():
+    engine = KinematicsEngine(
+        KinematicsConfig(calibration_min_frames=20), min_visibility=0.5
+    )
+    segmenter = PhaseSegmenter(PhaseConfig())
+
+    frames, reps = [], []
+    for pose in squat_poses():
+        kinematic = engine.update(pose)
+        assert kinematic is not None
+        result = segmenter.update(kinematic)
+        frames.append(kinematic.with_phase(result.phase))
+        if result.completed_rep:
+            reps.append(result.completed_rep)
+    return engine, segmenter, frames, reps
+
+
+def test_pipeline_detects_one_rep_and_calibrates_the_lifter():
+    engine, segmenter, frames, reps = run_pipeline()
+
+    proportions = engine.proportions
+    assert proportions is not None
+    assert proportions.femur_to_torso_ratio == pytest.approx(0.90, abs=0.01)
+    assert proportions.tibia_to_femur_ratio == pytest.approx(0.889, abs=0.01)
+
+    assert segmenter.rep_count == 1
+    assert len(reps) == 1
+    # Hip sits at ankle + tibia*cos(40) + femur*cos(75) = 0.4975 leg-lengths, which is
+    # below parallel, so the rep should not read as a high squat downstream.
+    assert reps[0].min_hip_height_norm == pytest.approx(0.4975, abs=0.02)
+
+    observed = {f.phase for f in frames}
+    assert {Phase.SETUP, Phase.ECCENTRIC, Phase.CONCENTRIC} <= observed
+
+
+def test_angles_move_in_the_expected_directions_through_the_rep():
+    _, _, frames, _ = run_pipeline()
+    standing = frames[10].camera_near
+    # NaN heights (pre-calibration) compare false against everything, so min() would
+    # silently return the first frame rather than the deepest one.
+    measured = [f for f in frames if not math.isnan(f.hip_height_norm)]
+    deepest = min(measured, key=lambda f: f.hip_height_norm).camera_near
+
+    assert standing.hip_flexion == pytest.approx(180.0, abs=1.0)
+    assert deepest.hip_flexion < 90
+    assert deepest.knee_flexion < standing.knee_flexion
+    assert deepest.ankle_dorsiflexion < standing.ankle_dorsiflexion
+    assert deepest.back_to_vertical > standing.back_to_vertical + 20
+
+
+def test_live_output_round_trips_through_the_reference_loader(tmp_path):
+    """The invariant: no adapter layer between the live path and the corpus."""
+    engine, _, frames, _ = run_pipeline()
+    usable = [f for f in frames if f.near_complete and not math.isnan(f.hip_height_norm)]
+    assert len(usable) > 60
+
+    document = {
+        "metadata": {
+            "exercise": "barbell_back_squat",
+            "camera_angle": "45_oblique_anterior",
+            "dataset_type": "reference_optimal",
+            "fps_target": 30,
+        },
+        "subject_proportions": engine.proportions.to_dict(),
+        "frames": [
+            {**f.to_json_frame(), "form_label": FormLabel.OPTIMAL.value} for f in usable
+        ],
+    }
+
+    path = tmp_path / "generated.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    sequence = load_sequence(path, DatasetConfig())
+    assert len(sequence) == len(usable)
+    assert sequence.femur_to_torso_ratio == pytest.approx(0.90, abs=0.01)
+
+    # Feature vectors must survive serialization unchanged, to rounding.
+    expected = np.vstack([to_feature_vector(f) for f in usable])
+    np.testing.assert_allclose(sequence.features, expected, atol=1e-3)
+
+    # And the phase vocabulary must survive as the same enum members.
+    assert all(isinstance(p, Phase) for p in sequence.phases)
+    assert [f.phase for f in usable] == list(sequence.phases)
