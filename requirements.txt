@@ -9,3 +9,7 @@ mediapipe>=1.0,<2
 opencv-contrib-python>=4.10
 numpy>=1.26
 PyYAML>=6.0,<7
+
+# Web prototype (server.py). The desktop entry point, app.py, does not need these.
+fastapi>=0.115
+uvicorn>=0.30
