@@ -165,6 +165,21 @@ class CameraStream:
 
     # -- internals -------------------------------------------------------------
 
+    def _playback_interval(self, cap: cv2.VideoCapture) -> float:
+        """Seconds to wait between frames, or 0 to read as fast as the source allows.
+
+        Only file sources are paced. A camera already delivers at its own rate, and
+        adding a sleep there would fight the driver.
+        """
+        if isinstance(self.config.source, int) or not self.config.pace_file_playback:
+            return 0.0
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        if not fps or fps <= 0 or fps > 1000:
+            log.warning("file source reports no usable frame rate; replaying at full speed")
+            return 0.0
+        log.info("pacing file playback at %.1f fps", fps)
+        return 1.0 / float(fps)
+
     def _drain_warmup(self, cap: cv2.VideoCapture) -> None:
         for _ in range(max(0, self.config.warmup_frames)):
             if not cap.read()[0]:
@@ -174,6 +189,8 @@ class CameraStream:
         cap = self._cap
         assert cap is not None
         index = 0
+        interval = self._playback_interval(cap)
+        due = time.monotonic()
         try:
             while not self._stop.is_set():
                 ok, image = cap.read()
@@ -185,6 +202,17 @@ class CameraStream:
                 index += 1
                 self._grabbed += 1
                 self._publish(frame)
+
+                if interval:
+                    due += interval
+                    delay = due - time.monotonic()
+                    if delay > 0:
+                        # Event.wait, not sleep, so stop() is still responsive.
+                        self._stop.wait(delay)
+                    else:
+                        # Decoding fell behind real time; resync rather than
+                        # accumulating an ever-growing debt.
+                        due = time.monotonic()
         except BaseException as exc:  # surfaced to the consumer via read()
             self._error = exc
             log.exception("camera thread crashed")

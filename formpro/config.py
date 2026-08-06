@@ -29,6 +29,11 @@ class CameraConfig:
     backend: str = "auto"
     warmup_frames: int = 5
     read_timeout_s: float = 2.0
+    #: Pace file sources at their recorded frame rate. A camera is rate-limited by the
+    #: sensor, but a file is not: left ungated, the reader races through a clip as fast
+    #: as it decodes and the drop-old buffer discards nearly all of it, so a 30 s replay
+    #: finishes in a couple of seconds having analysed a fraction of the frames.
+    pace_file_playback: bool = True
 
 
 @dataclass(frozen=True)
