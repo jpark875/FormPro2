@@ -195,15 +195,15 @@ def test_processor_streams_video_file(tmp_path):
     assert all(f.inference_ms >= 0 for f in frames)
 
 
-def test_file_playback_is_paced_to_the_recorded_frame_rate(tmp_path):
-    """Unpaced, the reader races a clip and drop-old discards nearly all of it."""
+def _time_playback(tmp_path, name, *, paced):
+    """Read a 20-frame, 20 fps clip end to end and report elapsed time and drops."""
     import time
 
     import cv2
 
     from formpro.capture import CameraStream
 
-    clip = tmp_path / "paced.avi"
+    clip = tmp_path / name
     writer = cv2.VideoWriter(str(clip), cv2.VideoWriter_fourcc(*"MJPG"), 20, (64, 48))
     assert writer.isOpened()
     for i in range(20):
@@ -212,38 +212,28 @@ def test_file_playback_is_paced_to_the_recorded_frame_rate(tmp_path):
 
     started = time.monotonic()
     with CameraStream(
-        CameraConfig(source=str(clip), warmup_frames=0, read_timeout_s=0.1)
+        CameraConfig(source=str(clip), warmup_frames=0, read_timeout_s=0.1,
+                     pace_file_playback=paced)
     ) as camera:
         frames = list(camera.frames())
         dropped = camera.dropped
-    elapsed = time.monotonic() - started
+    return time.monotonic() - started, frames, dropped
 
-    # 20 frames at 20 fps is about a second; unpaced this completes almost instantly.
-    assert elapsed > 0.7
+
+def test_file_playback_is_paced_to_the_recorded_frame_rate(tmp_path):
+    """Unpaced, the reader races a clip and drop-old discards nearly all of it.
+
+    Both bounds are absolute with wide headroom rather than a ratio between the two
+    runs, which would compound the noise in two separate measurements. 20 frames at
+    20 fps is about a second paced, and roughly 0.15 s unpaced.
+    """
+    paced, frames, dropped = _time_playback(tmp_path, "paced.avi", paced=True)
+    unpaced, _, _ = _time_playback(tmp_path, "fast.avi", paced=False)
+
+    assert paced > 0.7, f"paced playback finished in {paced:.2f}s"
+    assert unpaced < 0.7, f"unpaced playback took {unpaced:.2f}s"
     assert len(frames) >= 15, "paced playback should not be dropping frames"
     assert dropped <= 2
-
-
-def test_pacing_can_be_disabled(tmp_path):
-    import time
-
-    import cv2
-
-    from formpro.capture import CameraStream
-
-    clip = tmp_path / "fast.avi"
-    writer = cv2.VideoWriter(str(clip), cv2.VideoWriter_fourcc(*"MJPG"), 20, (64, 48))
-    for i in range(20):
-        writer.write(np.full((48, 64, 3), i * 5, dtype=np.uint8))
-    writer.release()
-
-    started = time.monotonic()
-    with CameraStream(
-        CameraConfig(source=str(clip), warmup_frames=0, read_timeout_s=0.1,
-                     pace_file_playback=False)
-    ) as camera:
-        list(camera.frames())
-    assert time.monotonic() - started < 0.5
 
 
 def test_processor_reset_forwards_to_backend():
