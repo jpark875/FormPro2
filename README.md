@@ -5,8 +5,10 @@ stream, extracts 3D pose landmarks, normalizes them against the lifter's own bod
 proportions, compares the result to a labelled reference dataset, and draws corrective cues
 onto the live feed.
 
-Scope for v1 is the barbell back squat only. Thresholds, error classes and phase
-segmentation are hardcoded for the squat; generalizing to other lifts is deferred.
+Scope for v1 is the barbell back squat only. The error classes, rep-cycle vocabulary
+and error signatures are specific to the squat; generalizing to other lifts is
+deferred. Note that the numeric bounds are not hardcoded anywhere: they are derived
+from the reference corpus at runtime. See Analysis.
 
 ## Architecture
 
@@ -33,13 +35,13 @@ rather than between two squats.
 
 ```
 FormPro2/
-├── app.py                       Phase 6: main loop and UI
+├── app.py                       main loop
 ├── requirements.txt
 ├── configs/
 │   └── squat.yaml               all tunables; no magic numbers in code
 ├── models/                      .task model binaries (git-ignored, see fetch_model.py)
 ├── data/
-│   ├── reference/               Phase 4: labelled reference sequences (JSON)
+│   ├── reference/               labelled reference sequences (JSON)
 │   └── recordings/              git-ignored raw captures
 ├── formpro/
 │   ├── schema.py                data contracts and landmark indices
@@ -51,7 +53,8 @@ FormPro2/
 │   ├── kinematics.py            segment lengths, ratios, joint angles, features
 │   ├── phases.py                rep cycle segmentation from hip trajectory
 │   ├── dataset_loader.py        reference set ingestion and corpus indexing
-│   └── form_analyzer.py         Phase 5: DTW / similarity comparison engine
+│   ├── form_analyzer.py         corpus-derived bounds, error detection, DTW
+│   └── overlay.py               skeleton and HUD rendering
 ├── scripts/
 │   ├── fetch_model.py           downloads the BlazePose .task binary
 │   ├── smoke_test_pose.py       ingestion diagnostic viewer, not the real UI
@@ -87,8 +90,8 @@ and dropped-frame count. Press `q` to quit.
 ## Camera placement
 
 The system assumes a **45-degree anterior oblique** view: front-diagonal, roughly waist
-height. This is a fixed constraint, not a suggestion, because the Phase 3 thresholds are
-calibrated against it.
+height. This is a fixed constraint, not a suggestion: the reference corpus is recorded
+at this angle, and live data is only comparable to it from the same viewpoint.
 
 The reasoning is that neither orthogonal view works alone. A pure lateral view suffers from
 occlusion, since weight plates block the hips and knees, and it cannot see knee valgus at
@@ -96,7 +99,7 @@ all. A pure frontal view has to derive back angle and hip depth from the Z axis,
 BlazePose's least reliable output. The 45-degree angle gives a usable 2D projection of both
 the sagittal plane (flexion and extension) and the frontal plane (valgus and varus).
 
-Two consequences for Phase 3:
+Two consequences for the kinematics engine:
 
 - Joint angles are computed from BlazePose 3D vectors, but weighted toward X and Y. Z is
   used only where nothing else is available.
@@ -114,8 +117,8 @@ them happen in `kinematics.py`, which is the only normalization path in the syst
    width, hip height by that lifter's own leg length. Both come out dimensionless.
 3. Proportions as context, not correction. `femur_to_torso_ratio` never adjusts a
    measurement. It is carried alongside it, because a 45-degree forward lean is sound on
-   a long-femur lifter and a good-morning on a short-femur one. Phase 5 interpolates the
-   acceptable band from the corpus using this ratio.
+   a long-femur lifter and a good-morning on a short-femur one. The analyzer interpolates
+   the acceptable band from the corpus using this ratio; see Analysis below.
 
 Segment lengths are calibrated over a rolling window and frozen once enough frames have
 accumulated, rather than recomputed per frame. A per-frame estimate would let the
@@ -151,7 +154,7 @@ rotated poses in the test suite.
 ## Rep cycle
 
 `phases.py` segments the lift by tracking hip height over time. The vocabulary is shared
-verbatim with the reference dataset, since Phase 5 aligns like against like:
+verbatim with the reference dataset, since the analyzer aligns like against like:
 
 | Phase | Meaning |
 |---|---|
@@ -162,7 +165,7 @@ verbatim with the reference dataset, since Phase 5 aligns like against like:
 | `recovery` | return to standing |
 
 Velocity is a least-squares slope over a fixed time window using capture timestamps,
-never a difference over frame counts. Phase 2 deliberately drops frames when inference
+never a difference over frame counts. The capture stage deliberately drops frames when inference
 falls behind, so consecutive frames are not evenly spaced and a per-frame delta would
 read a dropped frame as sudden acceleration. Both position and velocity are divided by
 the lifter's own leg length, so one threshold set covers every body size.
@@ -170,8 +173,8 @@ the lifter's own leg length, so one threshold set covers every body size.
 Two safeguards worth knowing about:
 
 - Every transition must hold for `min_dwell_frames` before it commits. A flickering
-  phase is worse than a lagging one, because Phase 5 keys its comparison window off the
-  phase.
+  phase is worse than a lagging one, because the analyzer keys its comparison window
+  off the phase.
 - A rep may only begin from a standing position the segmenter actually observed. After a
   tracking dropout, or at startup with the lifter already mid-squat, the partial rep is
   discarded rather than scored on the fraction that happened to be visible.
@@ -245,7 +248,7 @@ knee is 0 degrees of flexion.
 
 `camera_near` is the side facing the camera, resolved per frame from Z depth with
 hysteresis so it cannot flip mid-rep. It is the reliable side for sagittal measures.
-`camera_far` is partially occluded at 45 degrees and enters the Phase 5 distance metric
+`camera_far` is partially occluded at 45 degrees and enters the analyzer's distance metric
 at reduced weight (`kinematics.camera_far_weight`) rather than being trusted equally or
 discarded. Anatomical left and right are preserved throughout; the near/far split is a
 viewing relationship layered on top.
@@ -274,10 +277,113 @@ breaks once the concentric begins. `dataset_type` records the file's dominant in
 
 `load_corpus` reads a directory into a `ReferenceCorpus` indexed by
 `femur_to_torso_ratio`, with `bracketing()` returning the nearest reference below and
-above a live lifter's build so Phase 5 can interpolate rather than snap to the nearest.
-Either side comes back `None` when the lifter falls outside the corpus, which Phase 5
-must treat as extrapolation. A corpus spanning less than `dataset.min_ratio_span` warns:
+above a live lifter's build so the analyzer interpolates rather than snapping to the
+nearest. Either side comes back `None` when the lifter falls outside the corpus, which
+the analyzer treats as extrapolation. A corpus spanning less than `dataset.min_ratio_span` warns:
 the band is then nominally dynamic but effectively fixed to one body type.
+
+## Analysis
+
+`form_analyzer.py` is an inference engine over the corpus. It holds no baseline
+thresholds and no fallback constants: every bound it applies is computed at runtime from
+reference frames labelled `optimal_form`, then adjusted to the live lifter's build. An
+empty or unusable corpus is a startup failure, not a degraded mode, because an analyzer
+that quietly falls back to hardcoded numbers is indistinguishable from one that is
+working and passes every rep.
+
+### How a bound is produced
+
+1. Reference frames labelled `optimal_form` are pooled by subject build, giving one
+   threshold profile per distinct `femur_to_torso_ratio` in the corpus. Error files
+   contribute too: the clean eccentric of a good-morning rep is still optimal evidence.
+   Frames labelled with an error never contribute, since folding them in would widen the
+   acceptable band to admit the very thing being detected.
+2. Within a profile, frames are grouped by phase and each feature gets a percentile band.
+   Bands are per phase because the acceptable knee angle at the bottom has nothing to do
+   with the acceptable knee angle during setup.
+3. At evaluation time the lifter's ratio goes to `ReferenceCorpus.bracketing()`. Between
+   two profiles the bands blend by distance. Outside the corpus they are projected along
+   the trend of the two nearest profiles, logging `[Extrapolation Warning]`, and the HUD
+   marks the bounds as extrapolated. A lifter with an unusual build is exactly the case
+   where a corpus-average bound would be wrong, so the projection continues rather than
+   clamping.
+
+If the corpus holds only one build, no trend exists to project. The analyzer says so and
+uses that single profile, rather than inventing a slope from one point.
+
+### Thresholds are evidence, interpretation is domain knowledge
+
+`ERROR_SIGNATURES` maps a feature deviating in a given direction during a given phase
+onto a named error. That table contains no numbers. It says *which* error a deviation
+means, never *how far* is too far, and a test asserts no float ever appears in it. The
+magnitudes come entirely from the corpus. This separation is what lets the bounds stay
+fully dynamic while the cues stay specific enough to act on.
+
+Two signatures are worth explaining:
+
+- **Hips rising too fast.** The schema carries no shoulder height, and does not need to.
+  If the hips outrun the shoulders the torso necessarily becomes more horizontal, so a
+  back angle that is both above the corpus band and *still opening* during the ascent is
+  precisely that failure. The rate requirement is what separates it from a static lean.
+- **Heel lift.** As the heel rises, the heel-to-toe axis tilts away from the shin and the
+  measured ankle angle *opens*, whereas normal dorsiflexion during a descent closes it.
+  An unexpectedly large ankle angle at the bottom is therefore the signature.
+
+### Feature scaling
+
+A distance metric over raw features would discard the only frontal-plane signal
+available. A full valgus collapse moves `knee_to_hip_width_ratio` by around 0.2, against
+angle deviations of tens of degrees, so the frontal signal would vanish inside sagittal
+noise.
+
+`kinematics.feature_weights()` fixes this from a stated biomechanical equivalence rather
+than a tuned constant: a 0.1 deviation in the width ratio is treated as about as severe
+as 15 degrees of joint-angle deviation, giving a scale factor of 150. Both numbers live
+in `configs/squat.yaml` as the equivalence itself, so the claim can be argued with
+directly instead of appearing as an unexplained multiplier. The camera-far side carries
+reduced weight in the same dictionary.
+
+The practical effect is that findings from different features can be ranked against each
+other on one severity scale, so the HUD shows the worst problem first.
+
+### Sequence classification
+
+Alongside the per-frame band checks, completed eccentric and concentric segments are
+compared against labelled reference segments by weighted DTW, with a Sakoe-Chiba band
+bounding how far the alignment may warp. Without that band a slow live descent could
+align against a fast reference ascent and report a small distance between two quite
+different movements.
+
+This is the check that can catch a coordination fault no single frame violates: a rep
+where every angle stays inside its band but the relationship between them is wrong. A
+classification is only reported when the best label beats the runner-up by
+`analyzer.min_confidence_margin`; otherwise it is withheld as inconclusive rather than
+resolved by coin toss.
+
+## Running it
+
+```powershell
+python app.py
+```
+
+Loads the corpus, opens the camera, and renders the live feed. Keys: `q` or `Esc` to
+quit, `r` to reset the session for a new lifter or set.
+
+The HUD shows the calibrated `femur/torso` and `tibia/femur` ratios, the current rep
+phase, rep count, normalized depth, throughput telemetry, and where the active bounds
+came from. The camera-near side of the skeleton is drawn in green and the camera-far side
+in blue, so orientation can be confirmed at a glance; occluded joints drop to grey.
+Coaching cues appear along the bottom, green for `OPTIMAL FORM` and red for specific
+errors, worst first, each with the observed value and the corpus band it violated.
+
+Useful flags:
+
+| Flag | Effect |
+|---|---|
+| `--source PATH` | replay a video file instead of the camera |
+| `--reference DIR` | corpus directory, overriding the config |
+| `--no-mirror` | disable display mirroring |
+| `--verbose` | debug logging, including side-switch decisions |
 
 ## Coordinate conventions
 
@@ -295,7 +401,7 @@ MediaPipe orientation because OpenCV draws in Y-down.
 
 The capture stage never mirrors the frame. Mirroring before inference would swap the
 lifter's anatomical left and right, which would invert per-side findings such as knee
-valgus. Display mirroring is applied at render time only, in Phase 6.
+valgus. Display mirroring is applied at render time only, in `overlay.py`.
 
 ## Build status
 
@@ -305,5 +411,5 @@ valgus. Display mirroring is applied at render time only, in Phase 6.
 | 2 | Camera and pose ingestion | done |
 | 3 | Biomechanical normalization engine | done |
 | 4 | Dataset ingestion and preprocessing | done |
-| 5 | Real-time comparison logic | not started |
-| 6 | UI and feedback overlay | not started |
+| 5 | Real-time comparison logic | done |
+| 6 | UI and feedback overlay | done |
