@@ -49,19 +49,17 @@ kinematics:
   calibration_window_frames: 150
   calibration_min_frames: 45
 
-  # (femur_to_torso_ratio, max back_to_vertical degrees). A long femur forces a more
-  # horizontal torso to keep the bar over midfoot, so the tolerable lean grows with the
-  # ratio. Fallback only: Phase 5 should derive this band from the corpus instead.
-  back_angle_anchors:
-    - [0.85, 38.0]
-    - [1.30, 52.0]
-
   # The camera-far side is partially occluded at 45 degrees, so it contributes to the
   # comparison at reduced weight rather than being trusted equally or thrown away.
   camera_far_weight: 0.35
-  # knee_to_hip_width_ratio is ~1.0 while angles are ~100; without rescaling, a distance
-  # metric would effectively ignore the only frontal-plane feature available.
-  width_ratio_scale_deg: 60.0
+
+  # Variance equivalence for the one dimensionless feature. A full valgus collapse moves
+  # knee_to_hip_width_ratio by around 0.2, against angle deviations of tens of degrees,
+  # so without rescaling the frontal-plane signal would vanish inside sagittal noise.
+  # Stated as an equivalence rather than a bare multiplier so the claim is reviewable:
+  # 15 degrees / 0.1 ratio gives a scale factor of 150.
+  width_ratio_equivalent_degrees: 15.0
+  width_ratio_equivalent_delta: 0.1
 
 phases:
   velocity_window_ms: 150
@@ -79,6 +77,24 @@ phases:
   # Consecutive frames a transition must hold before it commits. A flickering phase is
   # worse than a lagging one, since Phase 5 keys its comparison window off the phase.
   min_dwell_frames: 3
+
+analyzer:
+  # Percentiles of the corpus's optimal-form frames that define the acceptable band.
+  # These choose which evidence counts as normal. There are no threshold numbers here:
+  # every bound the analyzer applies is computed from the reference corpus at runtime.
+  band_low_percentile: 5.0
+  band_high_percentile: 95.0
+  min_band_samples: 8
+
+  # Covers pose-estimator jitter, not biomechanical judgement. Raise it if the HUD
+  # reports errors on reps that look clean.
+  noise_allowance_deg: 2.0
+
+  finding_hold_frames: 4
+  finding_decay_frames: 10
+
+  dtw_band_ratio: 0.2
+  min_confidence_margin: 0.12
 
 dataset:
   root: data/reference

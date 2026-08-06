@@ -19,7 +19,7 @@ from formpro.kinematics import (
     KinematicsEngine,
     SideAngles,
     angle_between,
-    back_angle_allowance,
+    feature_weight_vector,
     feature_weights,
     to_feature_vector,
 )
@@ -222,22 +222,6 @@ def test_hip_height_norm_is_body_size_invariant():
 # -- tolerance band and features ----------------------------------------------
 
 
-def test_back_angle_allowance_interpolates_and_clamps():
-    anchors = ((0.85, 38.0), (1.30, 52.0))
-    assert back_angle_allowance(0.85, anchors) == pytest.approx(38.0)
-    assert back_angle_allowance(1.30, anchors) == pytest.approx(52.0)
-    assert back_angle_allowance(1.075, anchors) == pytest.approx(45.0)
-    # Outside the anchored range, clamp rather than extrapolate.
-    assert back_angle_allowance(0.50, anchors) == pytest.approx(38.0)
-    assert back_angle_allowance(2.00, anchors) == pytest.approx(52.0)
-    assert math.isnan(back_angle_allowance(math.nan, anchors))
-
-
-def test_long_femur_is_allowed_more_forward_lean():
-    anchors = ((0.85, 38.0), (1.30, 52.0))
-    assert back_angle_allowance(1.25, anchors) > back_angle_allowance(0.90, anchors)
-
-
 def test_feature_vector_matches_declared_order():
     frame = KinematicFrame(
         frame_id=1, timestamp_ms=0,
@@ -253,10 +237,31 @@ def test_feature_vector_matches_declared_order():
 
 
 def test_feature_weights_downrank_far_side_and_rescale_ratio():
-    weights = feature_weights(KinematicsConfig(camera_far_weight=0.35, width_ratio_scale_deg=60.0))
-    assert list(weights[:4]) == [1.0] * 4
-    assert list(weights[4:8]) == [0.35] * 4
-    assert weights[8] == 60.0
+    config = KinematicsConfig(
+        camera_far_weight=0.35,
+        width_ratio_equivalent_degrees=15.0,
+        width_ratio_equivalent_delta=0.1,
+    )
+    weights = feature_weights(config)
+    assert set(weights) == set(FEATURE_ORDER)
+    assert weights["camera_near.knee_flexion"] == 1.0
+    assert weights["camera_far.knee_flexion"] == 0.35
+    # 15 degrees per 0.1 of ratio is a scale factor of 150.
+    assert weights["global.knee_to_hip_width_ratio"] == pytest.approx(150.0)
+
+
+def test_feature_weight_vector_follows_declared_order():
+    vector = feature_weight_vector(KinematicsConfig())
+    weights = feature_weights(KinematicsConfig())
+    assert list(vector) == [weights[name] for name in FEATURE_ORDER]
+
+
+def test_width_ratio_deviation_is_comparable_to_an_angle_deviation():
+    """A 0.1 valgus deviation must weigh the same as 15 degrees of angle deviation."""
+    weights = feature_weights(KinematicsConfig())
+    valgus = 0.1 * weights["global.knee_to_hip_width_ratio"]
+    angle = 15.0 * weights["camera_near.knee_flexion"]
+    assert valgus == pytest.approx(angle)
 
 
 # -- velocity ------------------------------------------------------------------

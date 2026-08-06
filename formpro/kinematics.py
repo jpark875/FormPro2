@@ -48,7 +48,6 @@ from __future__ import annotations
 import logging
 import math
 from collections import deque
-from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -488,50 +487,35 @@ def to_feature_vector(frame: KinematicFrame) -> np.ndarray:
     )
 
 
-def feature_weights(config: KinematicsConfig) -> np.ndarray:
-    """Per-feature multipliers for the Phase 5 distance metric.
+def feature_weights(config: KinematicsConfig) -> dict[str, float]:
+    """Per-feature multipliers for the Phase 5 distance metric, keyed by feature name.
 
-    Does two jobs at once. It down-weights the camera-far side, which at 45 degrees is
-    partially occluded and contributes more noise than signal to sagittal measures. And
-    it rescales ``knee_to_hip_width_ratio`` from a dimensionless value near 1.0 into the
-    same magnitude range as the degree-valued angles, so an unscaled distance metric
-    does not effectively ignore the only frontal-plane feature we have.
+    Two jobs. It down-weights the camera-far side, which at 45 degrees is partially
+    occluded and contributes more noise than signal to sagittal measures. And it puts
+    ``knee_to_hip_width_ratio`` on the same scale as the degree-valued angles.
+
+    Without that rescaling the metric would effectively discard the only frontal-plane
+    feature available: a full valgus collapse moves the ratio by perhaps 0.2, against
+    angle deviations of tens of degrees, so the frontal signal would vanish inside the
+    sagittal noise. The scale comes from a stated biomechanical equivalence in config
+    rather than a tuned constant, so the assumption can be argued with directly.
     """
     far = config.camera_far_weight
-    return np.array(
-        [1.0, 1.0, 1.0, 1.0, far, far, far, far, config.width_ratio_scale_deg],
-        dtype=np.float64,
-    )
+    scale = config.width_ratio_scale
+    return {
+        "camera_near.hip_flexion": 1.0,
+        "camera_near.knee_flexion": 1.0,
+        "camera_near.ankle_dorsiflexion": 1.0,
+        "camera_near.back_to_vertical": 1.0,
+        "camera_far.hip_flexion": far,
+        "camera_far.knee_flexion": far,
+        "camera_far.ankle_dorsiflexion": far,
+        "camera_far.back_to_vertical": far,
+        "global.knee_to_hip_width_ratio": scale,
+    }
 
 
-def back_angle_allowance(
-    femur_to_torso_ratio: float, anchors: Sequence[Sequence[float]]
-) -> float:
-    """Maximum tolerable ``back_to_vertical`` for a lifter of this build, in degrees.
-
-    Linear interpolation between configured (ratio, degrees) anchors, clamped outside
-    the anchored range. A long femur forces a more horizontal torso to keep the bar over
-    midfoot, so the same 45-degree lean that is sound on a long-femur lifter is a
-    good-morning on a short-femur one.
-
-    This is the fallback used before a corpus is loaded. Once Phase 5 has the reference
-    set, the band should be interpolated from the corpus itself, which is real evidence
-    rather than a hand-drawn line.
-    """
-    points = sorted((float(r), float(d)) for r, d in anchors)
-    if not points:
-        raise ValueError("at least one back-angle anchor is required")
-    if math.isnan(femur_to_torso_ratio):
-        return math.nan
-    if len(points) == 1 or femur_to_torso_ratio <= points[0][0]:
-        return points[0][1]
-    if femur_to_torso_ratio >= points[-1][0]:
-        return points[-1][1]
-    for (r0, d0), (r1, d1) in zip(points, points[1:]):
-        if r0 <= femur_to_torso_ratio <= r1:
-            span = r1 - r0
-            if span < _EPS:
-                return d1
-            t = (femur_to_torso_ratio - r0) / span
-            return d0 + t * (d1 - d0)
-    return points[-1][1]
+def feature_weight_vector(config: KinematicsConfig) -> np.ndarray:
+    """``feature_weights`` flattened into ``FEATURE_ORDER`` for vectorized maths."""
+    weights = feature_weights(config)
+    return np.array([weights[name] for name in FEATURE_ORDER], dtype=np.float64)
