@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FormPro2 — Barbell Back Squat</title>
+<style>
+/* Utilitarian instrument panel. No animation, no transition, no hover state,
+   no gradient, no shadow, no rounded corner. Colour carries meaning only. */
+:root {
+  --bg: #000000;
+  --panel: #0a0a0a;
+  --line: #333333;
+  --line-soft: #1c1c1c;
+  --text: #ffffff;
+  --muted: #888888;
+  --dim: #555555;
+  --ok: #00ff00;
+  --err: #ff0000;
+  --warn: #ffff00;
+}
+
+* { box-sizing: border-box; border-radius: 0; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-rows: auto minmax(0, 1fr) 190px;
+  grid-template-areas:
+    "head head"
+    "feed side"
+    "logs side";
+  gap: 1px;
+  background: var(--line);
+}
+
+/* ---------- header ---------- */
+
+#head {
+  grid-area: head;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+#head h1 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+#head .spacer { flex: 1; }
+.chip {
+  border: 1px solid var(--line);
+  padding: 3px 8px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.chip b { color: var(--text); font-weight: 600; }
+
+button {
+  font: inherit;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  padding: 4px 12px;
+  cursor: pointer;
+}
+button:active { background: var(--text); color: var(--bg); }
+
+/* ---------- video ---------- */
+
+#feed {
+  grid-area: feed;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+#stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #050505;
+}
+#stage img {
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
+}
+
+#status {
+  border-top: 1px solid var(--line);
+  padding: 10px 12px;
+  background: var(--bg);
+  min-height: 62px;
+}
+#status .headline {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+#status .sub {
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+}
+#status.state-optimal { background: var(--ok); color: #000000; }
+#status.state-optimal .sub { color: #000000; }
+#status.state-error { background: var(--err); color: #ffffff; }
+#status.state-error .sub { color: #ffffff; }
+
+/* ---------- side panel ---------- */
+
+#side {
+  grid-area: side;
+  background: var(--panel);
+  overflow-y: auto;
+  min-height: 0;
+}
+section { border-bottom: 1px solid var(--line); }
+section > h2 {
+  margin: 0;
+  padding: 6px 10px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: var(--bg);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+table { width: 100%; border-collapse: collapse; }
+th, td {
+  padding: 4px 10px;
+  text-align: left;
+  font-weight: 400;
+  border-bottom: 1px solid var(--line-soft);
+}
+th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+td {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  width: 44%;
+}
+tr:last-child th, tr:last-child td { border-bottom: 0; }
+
+.val-null { color: var(--dim); }
+.val-ok { color: var(--ok); }
+.val-err { color: var(--err); }
+.val-warn { color: var(--warn); }
+
+/* ---------- log ---------- */
+
+#logs {
+  grid-area: logs;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-top: 1px solid var(--line);
+}
+#logs > h2 {
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line-soft);
+}
+#logbody { flex: 1; overflow-y: auto; min-height: 0; }
+#logbody table td, #logbody table th { border-bottom: 1px solid var(--line-soft); }
+#logbody td.t { width: 68px; text-align: right; color: var(--dim); font-variant-numeric: tabular-nums; }
+#logbody td.lvl {
+  width: 62px; text-align: left; text-transform: uppercase;
+  font-size: 11px; letter-spacing: 0.06em;
+}
+#logbody td.msg { width: auto; text-align: left; color: var(--text); }
+#logbody .lvl-ok { color: var(--ok); }
+#logbody .lvl-error { color: var(--err); }
+#logbody .lvl-warn { color: var(--warn); }
+#logbody .lvl-info { color: var(--muted); }
+
+#empty { padding: 10px 12px; color: var(--dim); }
+</style>
+</head>
+<body>
+
+<header id="head">
+  <h1>FormPro2 / Barbell Back Squat</h1>
+  <span class="chip" id="chip-link">LINK <b id="v-link">--</b></span>
+  <span class="chip" id="chip-corpus">CORPUS <b id="v-corpus">--</b></span>
+  <span class="spacer"></span>
+  <button id="btn-reset" type="button">Reset session</button>
+</header>
+
+<main id="feed">
+  <div id="stage"><img id="video" src="/video" alt="annotated camera feed"></div>
+  <div id="status">
+    <div class="headline" id="v-headline">CONNECTING</div>
+    <div class="sub" id="v-substatus">waiting for the pipeline</div>
+  </div>
+</main>
+
+<aside id="side">
+  <section>
+    <h2>Subject</h2>
+    <table>
+      <tr><th>femur / torso</th><td id="v-ftr" class="val-null">--</td></tr>
+      <tr><th>tibia / femur</th><td id="v-tfr" class="val-null">--</td></tr>
+      <tr><th>calibration</th><td id="v-cal" class="val-null">--</td></tr>
+      <tr><th>camera-near side</th><td id="v-near" class="val-null">--</td></tr>
+      <tr><th>threshold source</th><td id="v-band" class="val-null">--</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>Rep cycle</h2>
+    <table>
+      <tr><th>phase</th><td id="v-phase" class="val-null">--</td></tr>
+      <tr><th>reps completed</th><td id="v-reps">0</td></tr>
+      <tr><th>hip depth (leg lengths)</th><td id="v-depth" class="val-null">--</td></tr>
+      <tr><th>segment verdict</th><td id="v-segment" class="val-null">--</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>Joint angles / camera-near</h2>
+    <table>
+      <tr><th>hip flexion</th><td id="v-hip" class="val-null">--</td></tr>
+      <tr><th>knee flexion</th><td id="v-knee" class="val-null">--</td></tr>
+      <tr><th>ankle dorsiflexion</th><td id="v-ankle" class="val-null">--</td></tr>
+      <tr><th>back to vertical</th><td id="v-back" class="val-null">--</td></tr>
+      <tr><th>knee / hip width</th><td id="v-width" class="val-null">--</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>Active findings</h2>
+    <table id="findings"><tr><th>none</th><td class="val-ok">CLEAR</td></tr></table>
+  </section>
+
+  <section>
+    <h2>Pipeline</h2>
+    <table>
+      <tr><th>throughput</th><td id="v-fps" class="val-null">--</td></tr>
+      <tr><th>inference</th><td id="v-inf" class="val-null">--</td></tr>
+      <tr><th>frames dropped</th><td id="v-drop">0</td></tr>
+      <tr><th>tracking</th><td id="v-track" class="val-null">--</td></tr>
+    </table>
+  </section>
+</aside>
+
+<section id="logs">
+  <h2>Feedback log</h2>
+  <div id="logbody"><div id="empty">no events yet</div></div>
+</section>
+
+<script>
+(function () {
+  "use strict";
+
+  var POLL_MS = 250;
+  var lastLogSeq = 0;
+  var logRows = null;
+
+  function el(id) { return document.getElementById(id); }
+
+  function put(id, value, unit, cls) {
+    var node = el(id);
+    if (value === null || value === undefined || value === "") {
+      node.textContent = "--";
+      node.className = "val-null";
+      return;
+    }
+    node.textContent = unit ? value + " " + unit : String(value);
+    node.className = cls || "";
+  }
+
+  function ensureLogTable() {
+    if (logRows) { return logRows; }
+    var body = el("logbody");
+    body.innerHTML = "";
+    var table = document.createElement("table");
+    logRows = document.createElement("tbody");
+    table.appendChild(logRows);
+    body.appendChild(table);
+    return logRows;
+  }
+
+  function appendLog(entries) {
+    if (!entries || !entries.length) { return; }
+    var rows = ensureLogTable();
+    // Server sends newest first; insert so the newest ends up at the top.
+    for (var i = entries.length - 1; i >= 0; i--) {
+      var e = entries[i];
+      var tr = document.createElement("tr");
+      var t = document.createElement("td");
+      t.className = "t";
+      t.textContent = e.t.toFixed(1) + "s";
+      var lvl = document.createElement("td");
+      lvl.className = "lvl lvl-" + e.level;
+      lvl.textContent = e.level;
+      var msg = document.createElement("td");
+      msg.className = "msg";
+      msg.textContent = e.text;
+      tr.appendChild(t); tr.appendChild(lvl); tr.appendChild(msg);
+      rows.insertBefore(tr, rows.firstChild);
+      if (e.seq > lastLogSeq) { lastLogSeq = e.seq; }
+    }
+    while (rows.childNodes.length > 200) { rows.removeChild(rows.lastChild); }
+  }
+
+  function renderFindings(findings) {
+    var table = el("findings");
+    table.innerHTML = "";
+    if (!findings || !findings.length) {
+      table.innerHTML = '<tr><th>none</th><td class="val-ok">CLEAR</td></tr>';
+      return;
+    }
+    findings.forEach(function (f) {
+      var tr = document.createElement("tr");
+      var th = document.createElement("th");
+      th.textContent = f.message;
+      th.className = "val-err";
+      var td = document.createElement("td");
+      td.textContent = f.detail;
+      td.className = "val-null";
+      tr.appendChild(th); tr.appendChild(td);
+      table.appendChild(tr);
+    });
+  }
+
+  function renderStatus(d) {
+    var box = el("status");
+    var head = el("v-headline");
+    var sub = el("v-substatus");
+
+    if (d.error) {
+      box.className = "state-error";
+      head.textContent = "PIPELINE ERROR";
+      sub.textContent = d.error;
+      return;
+    }
+    if (!d.connected) {
+      box.className = "";
+      head.textContent = "CONNECTING";
+      sub.textContent = "waiting for the camera";
+      return;
+    }
+    if (!d.tracking) {
+      box.className = "";
+      head.textContent = "NO LIFTER DETECTED";
+      sub.textContent = "step into frame at a 45-degree anterior oblique angle";
+      return;
+    }
+    if (!d.calibrated) {
+      box.className = "";
+      head.textContent = "CALIBRATING BUILD";
+      sub.textContent = "measuring segment lengths - "
+        + Math.round((d.calibration_progress || 0) * 100) + "%";
+      return;
+    }
+    if (d.findings && d.findings.length) {
+      box.className = "state-error";
+      head.textContent = d.findings[0].message;
+      sub.textContent = d.findings.length > 1
+        ? d.findings[0].detail + "  (+" + (d.findings.length - 1) + " more)"
+        : d.findings[0].detail;
+      return;
+    }
+    box.className = "state-optimal";
+    head.textContent = "OPTIMAL FORM";
+    sub.textContent = "phase " + (d.phase || "-") + "  /  reps " + (d.rep_count || 0);
+  }
+
+  function render(d) {
+    put("v-link", d.connected ? "UP" : "DOWN", null, d.connected ? "" : "val-err");
+    if (d.corpus) {
+      el("v-corpus").textContent = d.corpus.profiles + " @ "
+        + d.corpus.ratio_low.toFixed(2) + "-" + d.corpus.ratio_high.toFixed(2);
+    }
+
+    put("v-ftr", d.femur_to_torso_ratio !== null ? d.femur_to_torso_ratio.toFixed(3) : null);
+    put("v-tfr", d.tibia_to_femur_ratio !== null ? d.tibia_to_femur_ratio.toFixed(3) : null);
+    put("v-cal", d.calibrated ? "COMPLETE"
+      : Math.round((d.calibration_progress || 0) * 100) + "%",
+      null, d.calibrated ? "val-ok" : "val-warn");
+    put("v-near", d.near_side ? d.near_side.toUpperCase() : null);
+
+    if (d.band_source) {
+      put("v-band", d.band_source.text, null,
+        d.band_source.extrapolated ? "val-warn" : "");
+    } else {
+      put("v-band", null);
+    }
+
+    put("v-phase", d.phase ? d.phase.toUpperCase() : null);
+    put("v-reps", d.rep_count);
+    put("v-depth", d.depth !== null && d.depth !== undefined ? d.depth.toFixed(2) : null);
+    put("v-segment", d.segment_label ? d.segment_label.toUpperCase() : null,
+      null, d.segment_label === "optimal_form" ? "val-ok" : "val-err");
+
+    var a = d.angles || {};
+    put("v-hip", a.hip_flexion, "deg");
+    put("v-knee", a.knee_flexion, "deg");
+    put("v-ankle", a.ankle_dorsiflexion, "deg");
+    put("v-back", a.back_to_vertical, "deg");
+    put("v-width", a.knee_to_hip_width_ratio);
+
+    put("v-fps", d.fps, "fps");
+    put("v-inf", d.inference_ms, "ms");
+    put("v-drop", d.dropped);
+    put("v-track", d.tracking ? "LOCKED" : "LOST", null,
+      d.tracking ? "val-ok" : "val-err");
+
+    renderFindings(d.findings);
+    renderStatus(d);
+    appendLog(d.log);
+  }
+
+  function poll() {
+    fetch("/api/telemetry?since=" + lastLogSeq, { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(render)
+      .catch(function () {
+        put("v-link", "DOWN", null, "val-err");
+        el("status").className = "state-error";
+        el("v-headline").textContent = "SERVER UNREACHABLE";
+        el("v-substatus").textContent = "lost contact with the telemetry endpoint";
+      })
+      .then(function () { window.setTimeout(poll, POLL_MS); });
+  }
+
+  el("btn-reset").addEventListener("click", function () {
+    fetch("/api/reset", { method: "POST" });
+  });
+
+  // MJPEG connections drop when the pipeline restarts; re-attach with a cache buster.
+  el("video").addEventListener("error", function () {
+    var img = el("video");
+    window.setTimeout(function () { img.src = "/video?t=" + Date.now(); }, 1000);
+  });
+
+  poll();
+})();
+</script>
+</body>
+</html>
