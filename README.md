@@ -35,7 +35,10 @@ rather than between two squats.
 
 ```
 FormPro2/
-├── app.py                       main loop
+├── app.py                       desktop main loop (OpenCV window)
+├── server.py                    web prototype: MJPEG stream + telemetry API
+├── templates/
+│   └── index.html               web UI, self-contained
 ├── requirements.txt
 ├── configs/
 │   └── squat.yaml               all tunables; no magic numbers in code
@@ -54,11 +57,13 @@ FormPro2/
 │   ├── phases.py                rep cycle segmentation from hip trajectory
 │   ├── dataset_loader.py        reference set ingestion and corpus indexing
 │   ├── form_analyzer.py         corpus-derived bounds, error detection, DTW
+│   ├── synthesis.py             build-warping model for synthetic references
 │   └── overlay.py               skeleton and HUD rendering
 ├── scripts/
 │   ├── fetch_model.py           downloads the BlazePose .task binary
 │   ├── smoke_test_pose.py       ingestion diagnostic viewer, not the real UI
-│   └── validate_dataset.py      checks a reference directory against the contract
+│   ├── validate_dataset.py      checks a reference directory against the contract
+│   └── dataset_generator.py     synthesizes reference profiles across builds
 └── tests/
 ```
 
@@ -362,28 +367,97 @@ resolved by coin toss.
 
 ## Running it
 
+Two front ends share the same pipeline. Both refuse to start without a reference corpus,
+because every threshold is derived from it and there is no fallback.
+
+### Web (recommended)
+
+```powershell
+python server.py
+```
+
+Then open http://127.0.0.1:8000. Annotated video is delivered as MJPEG to an `<img>`
+element; telemetry is polled separately as JSON and rendered in the side panel, so text
+is selectable and does not cost video bandwidth to redraw.
+
+The pipeline runs in one worker thread and publishes the latest frame; HTTP handlers only
+read it. That means several viewers share one camera rather than competing for it, and a
+page refresh does not restart a lifter's calibration mid-set. The publish slot holds
+exactly one frame, so a viewer on a slow link falls behind by skipping rather than by
+accumulating stale frames.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /` | the UI |
+| `GET /video` | `multipart/x-mixed-replace` MJPEG stream |
+| `GET /api/telemetry?since=N` | telemetry plus log entries newer than `N` |
+| `POST /api/reset` | reset the session for a new lifter or set |
+
+### Desktop
+
 ```powershell
 python app.py
 ```
 
-Loads the corpus, opens the camera, and renders the live feed. Keys: `q` or `Esc` to
-quit, `r` to reset the session for a new lifter or set.
+An OpenCV window with the same skeleton plus an on-frame HUD. Keys: `q` or `Esc` to quit,
+`r` to reset the session.
 
-The HUD shows the calibrated `femur/torso` and `tibia/femur` ratios, the current rep
-phase, rep count, normalized depth, throughput telemetry, and where the active bounds
-came from. The camera-near side of the skeleton is drawn in green and the camera-far side
-in blue, so orientation can be confirmed at a glance; occluded joints drop to grey.
-Coaching cues appear along the bottom, green for `OPTIMAL FORM` and red for specific
-errors, worst first, each with the observed value and the corpus band it violated.
+### Flags
 
-Useful flags:
+Both accept the same options:
 
 | Flag | Effect |
 |---|---|
 | `--source PATH` | replay a video file instead of the camera |
 | `--reference DIR` | corpus directory, overriding the config |
 | `--no-mirror` | disable display mirroring |
-| `--verbose` | debug logging, including side-switch decisions |
+
+File sources are paced to their recorded frame rate. Without that the reader races
+through a clip as fast as it decodes and the drop-old buffer discards nearly all of it, so
+a 30-second replay would finish in seconds having analysed a fraction of the frames. Set
+`camera.pace_file_playback: false` to batch-process a file at full speed instead.
+
+In both front ends the camera-near side of the skeleton draws green and the camera-far
+side blue, so side resolution can be confirmed at a glance; occluded joints drop to grey.
+Findings are shown worst-first with the observed value and the corpus band it violated.
+
+## Widening the corpus
+
+The analyzer interpolates between the builds it has and projects a trend beyond them.
+Projection is the weakest evidence in the system, so a corpus should span the builds you
+expect to see. `scripts/dataset_generator.py` widens a thin corpus by re-expressing one
+verified perfect-form recording as the same rep performed by other builds:
+
+```powershell
+python scripts/dataset_generator.py data/reference/subject_1p00.json
+python scripts/validate_dataset.py
+```
+
+The model works in the sagittal plane and holds the bar over the midfoot. With segment
+angles measured from vertical, `r` the femur-to-torso ratio and `k` the tibia-to-femur
+ratio:
+
+```
+sin(back) = r * (sin(thigh) - k*sin(shin))
+```
+
+That one line is the whole biomechanical claim: the lean a lifter needs scales with femur
+ratio, because a longer femur pushes the hips further back for the same knee bend and the
+torso must incline further to bring the bar back over the midfoot. `hip_flexion` follows,
+since `180 = back + thigh + hip_flexion` means it moves by the same amount in the opposite
+direction.
+
+The model is evaluated at the source ratio and at the target, and only the **difference**
+is applied. The recording keeps its own jitter, timing and idiosyncrasies; only the
+build-driven component shifts. Knee and ankle angles are untouched, as is the width ratio,
+because the model rotates the torso only and makes no claim about the shin or the frontal
+plane.
+
+**Generated profiles are not measurements.** They encode this model's assumption, not an
+observed lifter, and if the model is wrong the analyzer will apply a wrong band with the
+same confidence it applies a measured one. They are written as
+`dataset_type: reference_optimal_synthetic` with provenance in their metadata, are
+git-ignored, and should be replaced with real recordings as those arrive.
 
 ## Coordinate conventions
 
@@ -412,4 +486,5 @@ valgus. Display mirroring is applied at render time only, in `overlay.py`.
 | 3 | Biomechanical normalization engine | done |
 | 4 | Dataset ingestion and preprocessing | done |
 | 5 | Real-time comparison logic | done |
-| 6 | UI and feedback overlay | done |
+| 6 | UI and feedback overlay | done (web and desktop) |
+| 7 | Synthetic corpus generation | done |
