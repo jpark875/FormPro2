@@ -1,5 +1,5 @@
-# FormPro2 configuration — barbell back squat.
-# Every tunable lives here. Modules take a config object; they never hardcode numbers.
+# FormPro2 configuration: barbell back squat.
+# Every tunable lives here. Modules take a config object and never hardcode numbers.
 
 exercise: barbell_back_squat
 
@@ -9,55 +9,49 @@ camera:
   height: 720
   fps: 30
   backend: auto        # auto | dshow | msmf | v4l2 | ffmpeg
-  warmup_frames: 5     # discarded while the sensor settles on exposure/white balance
+  warmup_frames: 5     # discarded while the sensor settles exposure and white balance
   read_timeout_s: 2.0
+  pace_file_playback: true   # false to batch-process a file at full decode speed
 
 pose:
-  variant: heavy       # lite | full | heavy — heavy is the most accurate in Z
+  variant: heavy       # lite | full | heavy. heavy is the most accurate in Z
   model_dir: models
   min_detection_confidence: 0.6
   min_presence_confidence: 0.6
   min_tracking_confidence: 0.6
 
-  # A joint below this visibility is treated as unmeasured rather than trusted.
-  # Downstream phases must skip findings that depend on an unmeasured joint instead
-  # of silently analysing a hallucinated coordinate.
+  # A joint below this is treated as unmeasured rather than trusted, and findings that
+  # depend on it are withheld instead of derived from a hallucinated coordinate.
   min_visibility: 0.5
 
   smoothing:
     enabled: true
-    # One-Euro filter. Raise `beta` if fast reps feel laggy; raise `min_cutoff` if the
-    # skeleton jitters while you hold the bottom position.
+    # One-Euro. Higher beta reduces lag on fast reps; higher min_cutoff reduces jitter
+    # in a held position.
     min_cutoff: 1.2
     beta: 0.35
     d_cutoff: 1.0
 
 kinematics:
-  # Depth-axis attenuation for ANGLE measurement only. 1.0 = true 3D angle,
-  # 0.0 = projected onto the image plane. At a 45-degree view, full 3D inherits
-  # BlazePose's depth noise while pure projection under-reads flexion, so this sits
-  # between them. Segment LENGTHS always use full 3D, since foreshortening correction
-  # is exactly what the depth axis is for.
+  # Depth attenuation for angle measurement only: 1.0 is a true 3D angle, 0.0 is
+  # projected onto the image plane. Segment lengths always use full 3D.
   z_weight: 0.6
 
-  # Camera-near side resolution. Raise the hysteresis if the near side flips mid-rep.
+  # Camera-near side resolution. A larger hysteresis makes the side harder to flip.
   side_ema_alpha: 0.15
   side_hysteresis_m: 0.02
 
-  # Rolling window for segment-length calibration. At 30 fps, 150 frames is ~5 s and
-  # 45 frames is ~1.5 s before proportions are first reported.
+  # Rolling window for segment-length calibration. At 30 fps, 150 frames is about 5 s
+  # and 45 frames about 1.5 s before proportions are first reported.
   calibration_window_frames: 150
   calibration_min_frames: 45
 
-  # The camera-far side is partially occluded at 45 degrees, so it contributes to the
-  # comparison at reduced weight rather than being trusted equally or thrown away.
+  # The camera-far side is partially occluded at 45 degrees, so it contributes at
+  # reduced weight rather than equally or not at all.
   camera_far_weight: 0.35
 
-  # Variance equivalence for the one dimensionless feature. A full valgus collapse moves
-  # knee_to_hip_width_ratio by around 0.2, against angle deviations of tens of degrees,
-  # so without rescaling the frontal-plane signal would vanish inside sagittal noise.
-  # Stated as an equivalence rather than a bare multiplier so the claim is reviewable:
-  # 15 degrees / 0.1 ratio gives a scale factor of 150.
+  # Severity equivalence for the one dimensionless feature: 15 degrees per 0.1 of ratio,
+  # a scale factor of 150. Stated as an equivalence so the claim is reviewable.
   width_ratio_equivalent_degrees: 15.0
   width_ratio_equivalent_delta: 0.1
 
@@ -65,29 +59,27 @@ phases:
   velocity_window_ms: 150
   max_gap_ms: 250
 
-  # Leg-lengths per second. Normalizing by the lifter's own leg length is what lets one
-  # threshold set cover every body size.
+  # Leg-lengths per second, so one threshold set covers every body size.
   move_velocity: 0.15
   still_velocity: 0.06
 
-  # Hip height as a fraction of leg length: ~1.0 standing, ~0.5 at depth.
+  # Hip height as a fraction of leg length: about 1.0 standing, about 0.5 at depth.
   standing_height: 0.95
   descended_height: 0.90
 
-  # Consecutive frames a transition must hold before it commits. A flickering phase is
-  # worse than a lagging one, since Phase 5 keys its comparison window off the phase.
+  # Consecutive frames a transition must hold before it commits.
   min_dwell_frames: 3
 
 analyzer:
   # Percentiles of the corpus's optimal-form frames that define the acceptable band.
-  # These choose which evidence counts as normal. There are no threshold numbers here:
-  # every bound the analyzer applies is computed from the reference corpus at runtime.
+  # These select which evidence counts as normal; no bound is written here, since every
+  # bound is computed from the corpus at runtime.
   band_low_percentile: 5.0
   band_high_percentile: 95.0
   min_band_samples: 8
 
-  # Covers pose-estimator jitter, not biomechanical judgement. Raise it if the HUD
-  # reports errors on reps that look clean.
+  # Covers pose-estimator jitter, not biomechanical judgement. Larger values suppress
+  # findings on reps that measure close to the band edge.
   noise_allowance_deg: 2.0
 
   finding_hold_frames: 4

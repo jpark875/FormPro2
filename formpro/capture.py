@@ -1,20 +1,20 @@
 """Threaded camera capture with drop-old buffering.
 
-Why a thread and not a plain ``cap.read()`` loop: OpenCV's ``VideoCapture`` holds an
-internal FIFO. If inference takes longer than the frame interval — which it will on the
-``heavy`` pose model — a synchronous read loop drains that FIFO in order and the analysed
-frame falls further and further behind the lifter. Corrective feedback delivered 800 ms
-late is worse than no feedback, because the user has already left the position being
-critiqued.
+A synchronous cap.read() loop drains OpenCV's internal FIFO in order, so when inference
+is slower than the frame interval the analysed frame falls progressively behind the
+lifter. Feedback delivered several hundred milliseconds late is worse than none, because
+the position being critiqued is already over.
 
-So the grab loop runs in its own thread and keeps a **one-slot** buffer: a new frame
+The grab loop therefore runs in its own thread with a one-slot buffer: a new frame
 overwrites an unconsumed one and increments a drop counter. Latency stays bounded at one
-frame interval regardless of inference speed, and the drop count is surfaced so a machine
-that is too slow to run this model reports that fact instead of quietly lagging.
+frame interval, and a machine too slow for the model reports that through the drop count
+instead of quietly lagging.
 
-This stage does **not** mirror the image. Flipping before inference would swap the lifter's
-anatomical left and right, inverting per-side findings such as knee valgus. Display
-mirroring is a render-time concern (Phase 6).
+File sources are paced to their recorded frame rate. A camera is rate-limited by its
+sensor; a file is not, and would otherwise be raced through and discarded.
+
+Frames are never mirrored here. Flipping before inference would swap the lifter's
+anatomical left and right and invert per-side findings such as knee valgus.
 """
 
 from __future__ import annotations
@@ -89,7 +89,7 @@ class CameraStream:
                 f"the device and that camera access is enabled in system privacy settings."
             )
 
-        # Requests, not guarantees — the driver picks the nearest supported mode.
+        # Requests, not guarantees: the driver picks the nearest supported mode.
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.config.width)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.config.height)
         cap.set(cv2.CAP_PROP_FPS, self.config.fps)
@@ -158,8 +158,8 @@ class CameraStream:
     def dropped(self) -> int:
         """Frames discarded because the consumer was still busy.
 
-        A steadily rising count means inference is slower than the capture rate — expected
-        and healthy on the heavy model; the pipeline stays live rather than falling behind.
+        A steadily rising count means inference is slower than the capture rate, which is
+        expected on the heavy model: the pipeline stays live rather than falling behind.
         """
         return self._dropped
 

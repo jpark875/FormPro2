@@ -1,11 +1,10 @@
-"""Synthetic pose fixtures shared by the Phase 3 and integration tests.
+"""Synthetic pose fixtures shared by the kinematics and integration tests.
 
 Poses are built directly in world space (Y-up, metres, hip-origin) so the geometry under
-test is known exactly, rather than depending on what the pose model happens to emit for
-a given video.
+test is known exactly, rather than depending on what the pose model emits for a video.
 
-The standing geometry is a vertical stack per side, which makes the extended angles come
-out at exactly 180 / 180 / 90 / 0 and gives femur 0.45 m, tibia 0.40 m, torso 0.50 m.
+The standing geometry is a vertical stack per side, which puts the extended angles at
+exactly 180 / 180 / 90 / 0 and gives femur 0.45 m, tibia 0.40 m, torso 0.50 m.
 """
 
 from __future__ import annotations
@@ -35,7 +34,7 @@ def joints_at(
     """Build a skeleton by forward kinematics from three segment angles.
 
     Interpolating joint *positions* between two poses does not preserve segment
-    lengths — a linear midpoint between a straight and a bent leg shortens the femur by
+    lengths: a linear midpoint between a straight and a bent leg shortens the femur by
     over a centimetre. Driving the fixture from angles instead keeps every segment
     rigid at every point in the trajectory, which is what makes the calibration
     assertions meaningful.

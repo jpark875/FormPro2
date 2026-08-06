@@ -1,4 +1,4 @@
-"""Phase 4 tests: reference ingestion, validation strictness and corpus indexing."""
+"""Reference ingestion: parsing, validation strictness and corpus indexing."""
 
 from __future__ import annotations
 
@@ -87,7 +87,7 @@ def test_loads_a_valid_sequence(tmp_path):
 
 
 def test_parsed_frames_are_the_same_type_the_live_engine_emits(tmp_path):
-    """The invariant that removes any translation layer between live and reference."""
+    """Parsed reference frames must be the same type the live engine emits."""
     sequence = load_sequence(write(tmp_path, reference_doc()), CONFIG)
     frame = sequence.frames[0]
     assert isinstance(frame, KinematicFrame)
@@ -234,7 +234,7 @@ def test_corpus_brackets_a_live_ratio_for_interpolation(tmp_path):
 
 
 def test_corpus_bracketing_reports_one_sided_for_out_of_range_lifters(tmp_path):
-    """Phase 5 must know it is extrapolating rather than interpolating."""
+    """The analyzer must be able to tell extrapolation from interpolation."""
     write(tmp_path, reference_doc(ratio=1.05), "a.json")
     corpus = load_corpus(tmp_path, CONFIG)
 
@@ -256,7 +256,7 @@ def test_missing_reference_directory_raises(tmp_path):
 
 
 def test_narrow_ratio_span_warns(tmp_path, caplog):
-    """One body type in the corpus means the band cannot really be interpolated."""
+    """One body type means the band cannot really be interpolated."""
     for i, ratio in enumerate((1.10, 1.12, 1.11)):
         write(tmp_path, reference_doc(ratio=ratio), f"s{i}.json")
     load_corpus(tmp_path, CONFIG)

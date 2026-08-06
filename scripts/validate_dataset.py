@@ -1,8 +1,7 @@
-"""Validate a reference dataset directory against the Phase 4 contract.
+"""Validate a reference dataset directory against the loader contract.
 
-Run this before trusting a corpus. It applies exactly the checks ``load_corpus`` applies
-at runtime, but reports every bad file instead of stopping at the first, so a set can be
-fixed in one pass.
+Applies the same checks load_corpus applies at runtime, but reports every bad file instead
+of stopping at the first, so a corpus can be fixed in one pass.
 
     python scripts/validate_dataset.py [data/reference] [--config configs/squat.yaml]
 """

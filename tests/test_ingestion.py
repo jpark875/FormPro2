@@ -1,4 +1,4 @@
-"""Phase 2 tests. No camera and no MediaPipe required — the pose backend is faked."""
+"""Camera and pose ingestion. No camera and no MediaPipe: the backend is faked."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ def _landmarks(fn):
 
 
 def test_world_axes_are_flipped_to_y_up_z_toward_camera():
-    """The single most load-bearing conversion in the pipeline."""
+    """World space must come out Y-up and Z-toward-camera."""
     world = _landmarks(lambda i: (1.0, 2.0, 3.0))
     image = _landmarks(lambda i: (0.5, 0.5, 0.0))
     pose = PoseFrame.from_mediapipe(0, 0, world, image)
@@ -189,7 +189,7 @@ def test_processor_streams_video_file(tmp_path):
 
     assert len(frames) >= 10
     assert [f.has_pose for f in frames[:3]] == [True, True, False]
-    # Timestamps are monotonic — required by MediaPipe and by phase segmentation.
+    # Timestamps are monotonic, required by MediaPipe and by rep segmentation.
     stamps = [f.frame.timestamp_ms for f in frames]
     assert stamps == sorted(stamps)
     assert all(f.inference_ms >= 0 for f in frames)

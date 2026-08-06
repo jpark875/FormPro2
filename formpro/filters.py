@@ -1,17 +1,14 @@
 """One-Euro filter for landmark smoothing.
 
-BlazePose output jitters by a few millimetres frame to frame even when the lifter is
-motionless. That noise is harmless for a static pose but not for us: Phase 3 differentiates
-hip Y to segment the eccentric and concentric phases, and differentiation amplifies
-high-frequency noise. Smoothing therefore belongs in ingestion, upstream of any analysis.
+BlazePose jitters by a few millimetres even on a motionless subject. Harmless for a static
+pose, but hip height is differentiated to segment the rep and differentiation amplifies
+high-frequency noise, so smoothing belongs upstream of any analysis.
 
-A One-Euro filter is used rather than a fixed low-pass because its cutoff adapts to speed:
-heavy smoothing while the lifter is holding a position, light smoothing during a fast
-ascent. A fixed filter would have to choose between visible jitter at the bottom of the
-squat and lag at the top.
+One-Euro rather than a fixed low-pass because its cutoff adapts to speed: heavy smoothing
+during a held position, light during a fast ascent. A fixed filter would have to choose
+between jitter at the bottom of the squat and lag at the top.
 
-Reference: Casiez, Roussel & Vogel, "1€ Filter: A Simple Speed-based Low-pass Filter for
-Noisy Input in Interactive Systems", CHI 2012.
+Casiez, Roussel and Vogel, CHI 2012.
 """
 
 from __future__ import annotations
@@ -53,8 +50,8 @@ class OneEuroFilter:
         self._t_prev_s: float | None = None
 
     def reset(self) -> None:
-        """Forget history — call when tracking is lost so the filter does not drag the
-        skeleton from the old pose toward the new one across the gap."""
+        """Forget history. Called when tracking is lost, so the filter does not drag
+        the skeleton from the old pose toward the new one across the gap."""
         self._x_prev = None
         self._dx_prev = np.zeros(self.shape, dtype=np.float32)
         self._t_prev_s = None

@@ -1,9 +1,8 @@
-"""Phase 2 diagnostic viewer — verifies camera + pose ingestion end to end.
+"""Camera and pose ingestion diagnostic.
 
-This is NOT the application UI. It draws the tracked-joint wireframe and a telemetry HUD
-so you can confirm the ingestion stage works and check that your camera placement keeps
-all twelve squat joints visible before any analysis exists to consume them. The real
-overlay lands in Phase 6 (``app.py``).
+Draws the tracked-joint wireframe and a telemetry readout, to confirm the ingestion stage
+works and that camera placement keeps all twelve squat joints visible. Not the application
+UI: that is app.py and server.py.
 
     python scripts/smoke_test_pose.py [--config configs/squat.yaml] [--source 0]
 """
@@ -45,7 +44,7 @@ def draw(image, af: AnalysisFrame, min_visibility: float, mirror: bool):
             cv2.circle(image, pose.pixel(joint, size), 5,
                        GREEN if visible else RED, -1, cv2.LINE_AA)
 
-    # Mirror only now that inference is done — see capture.py on why never before.
+    # Mirror only now that inference is done. See capture.py for why never before.
     if mirror:
         image = cv2.flip(image, 1)
 
@@ -95,7 +94,7 @@ def main() -> int:
     with VideoProcessor(config) as processor:
         for af in processor.stream():
             canvas = draw(af.frame.image.copy(), af, min_visibility, mirror)
-            cv2.imshow("FormPro2 - Phase 2 ingestion check", canvas)
+            cv2.imshow("FormPro2 - ingestion check", canvas)
             key = cv2.waitKey(1) & 0xFF
             if key in (ord("q"), 27):
                 break

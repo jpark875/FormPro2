@@ -1,7 +1,7 @@
-"""Phase 7 tests: the build-warping model.
+"""The build-warping model.
 
-The claim under test is that lean scales with femur-to-torso ratio, and that warping
-preserves everything the model does not speak to.
+Lean must scale with femur-to-torso ratio, and warping must preserve everything the model
+does not speak to.
 """
 
 from __future__ import annotations
@@ -59,7 +59,7 @@ def test_standing_needs_no_lean_for_any_build():
 
 
 def test_longer_femur_requires_more_lean():
-    """The single biomechanical claim the whole module rests on."""
+    """Required lean must increase with femur ratio."""
     shin = shin_angle_from_vertical(66.0)
     thigh = thigh_angle_from_vertical(78.0, shin)
     angles = [required_back_angle(r, thigh, shin, K)[0] for r in (0.70, 1.00, 1.35)]
@@ -101,7 +101,7 @@ def test_shorter_femur_stands_more_upright():
 
 
 def test_hip_flexion_moves_opposite_to_the_back_angle():
-    """They are two views of one linkage: 180 = back + thigh + hip_flexion."""
+    """Two views of one linkage: 180 = back + thigh + hip_flexion."""
     original = frame()
     warped, _ = warp_frames((original,), 1.00, 1.25, K)
 

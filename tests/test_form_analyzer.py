@@ -1,8 +1,8 @@
-"""Phase 5 tests: corpus-derived bounds, build adjustment, and error detection.
+"""Analyzer: corpus-derived bounds, build adjustment and error detection.
 
-The recurring assertion across this file is that nothing is hardcoded. Change the corpus
-and the bounds must move with it; empty the corpus and the analyzer must refuse to run
-rather than fall back to a constant.
+The recurring assertion is that nothing is hardcoded. Change the corpus and the bounds
+move with it; empty the corpus and the analyzer refuses to run rather than fall back to
+a constant.
 """
 
 from __future__ import annotations
@@ -143,7 +143,7 @@ def test_bands_come_from_the_corpus(tmp_path):
 
 
 def test_bands_track_a_changed_corpus(tmp_path):
-    """The load-bearing property: bounds are evidence, not constants."""
+    """Bounds must follow the corpus rather than a constant."""
     shallow = build_profiles(write_corpus(tmp_path, [(0.90, 0.0)]), ANALYZER)
     for path in tmp_path.glob("*.json"):
         path.unlink()
@@ -422,7 +422,7 @@ def test_valgus_and_angle_deviations_are_ranked_on_one_scale(tmp_path):
 
 
 def test_signature_table_carries_no_magnitudes():
-    """Interpretation is domain knowledge; magnitudes must come from the corpus."""
+    """The table names errors; magnitudes must come from the corpus."""
     for signature in ERROR_SIGNATURES:
         assert signature.feature in FEATURE_ORDER
         assert signature.direction in (-1, 1)
@@ -470,7 +470,7 @@ def test_dtw_handles_empty_input():
 
 
 def test_sequence_classification_prefers_the_matching_label(tmp_path):
-    """Whole-shape check: catches coordination faults no single frame violates."""
+    """Catches coordination faults that no single frame violates."""
     good = reference_doc(0.90)
     bad = reference_doc(0.90)
     for frame in bad["frames"]:

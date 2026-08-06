@@ -1,14 +1,12 @@
-"""Phase 2 orchestrator: camera stream -> pose stream.
+"""Camera stream to pose stream.
 
-``VideoProcessor`` owns the lifecycle of the camera thread and the pose backend and
-exposes the pipeline's single public entry point for live data: an iterator of
-``AnalysisFrame``. Downstream phases consume that iterator and never touch OpenCV or
-MediaPipe directly.
+Owns the camera thread and the pose backend, and exposes the pipeline's single entry point
+for live data: an iterator of AnalysisFrame. Nothing downstream touches OpenCV or
+MediaPipe.
 
-``AnalysisFrame.pose`` is ``None`` when nobody is in shot. That case is represented
-explicitly rather than by skipping the frame, because Phase 4's rep segmentation needs to
-know that a gap occurred — a dropout in the middle of a descent must break the rep, not
-be stitched over as though the lifter teleported.
+AnalysisFrame.pose is None when nobody is in shot, represented explicitly rather than by
+skipping the frame: rep segmentation needs to know a gap occurred, so a dropout mid-descent
+breaks the rep instead of being stitched over.
 """
 
 from __future__ import annotations
@@ -58,8 +56,8 @@ class VideoProcessor:
     def start(self) -> VideoProcessor:
         if self._started:
             raise RuntimeError("processor already started")
-        # Load the model before opening the camera: model load takes seconds, and holding
-        # the device open (recording light on) while it happens is a poor first impression.
+        # Load the model first: it takes seconds, and the camera would otherwise sit
+        # open with its recording light on for the duration.
         if self._backend is None:
             self._backend = BlazePoseEstimator(self.config.pose)
         self._camera.start()
@@ -100,7 +98,7 @@ class VideoProcessor:
             )
 
     def reset(self) -> None:
-        """Clear tracker state — e.g. when the user starts a new set."""
+        """Clear tracker state, e.g. at the start of a new set."""
         if self._backend is not None:
             self._backend.reset()
 

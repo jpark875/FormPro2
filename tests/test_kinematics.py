@@ -1,6 +1,6 @@
-"""Phase 3 tests: geometry, side resolution, calibration and rep segmentation.
+"""Kinematics: geometry, side resolution, calibration and rep segmentation.
 
-Poses are synthesised directly in world space (Y-up, metres, hip-origin) so the maths is
+Poses are synthesised directly in world space (Y-up, metres, hip-origin), so the maths is
 checked against known geometry rather than against whatever the model happens to emit.
 """
 
@@ -44,7 +44,7 @@ def test_angle_between_basics():
 
 
 def test_standing_pose_produces_extended_angles():
-    """180/180/90/0 is the convention the reference dataset encodes."""
+    """Standing reads 180/180/90/0, the convention the reference dataset uses."""
     eng = engine(calibration_min_frames=1)
     frame = eng.update(make_pose())
     assert frame is not None
@@ -142,7 +142,7 @@ def test_near_side_is_the_one_closer_to_camera():
 
 
 def test_near_side_does_not_flip_on_noise():
-    """A side that flips mid-rep splices two limbs into one time series."""
+    """A side flipping mid-rep would splice two limbs into one time series."""
     eng = engine(calibration_min_frames=1, side_hysteresis_m=0.05, side_ema_alpha=0.2)
     rng = np.random.default_rng(0)
     sides = []
@@ -179,7 +179,7 @@ def test_proportions_match_the_synthesised_geometry():
 
 
 def test_proportion_median_rejects_outlier_frames():
-    """Depth spikes must not move the estimate; that is why it is a median."""
+    """Depth spikes must not move the estimate."""
     eng = engine(calibration_min_frames=10)
     for i in range(30):
         if i % 7 == 0:
@@ -276,7 +276,7 @@ def test_velocity_tracker_measures_per_second_not_per_frame():
 
 
 def test_velocity_is_unaffected_by_dropped_frames():
-    """Phase 2 drops frames under load; a per-frame delta would read that as speed."""
+    """Capture drops frames under load; a per-frame delta would read that as speed."""
     even = VelocityTracker(window_ms=300, max_gap_ms=400)
     uneven = VelocityTracker(window_ms=300, max_gap_ms=400)
 

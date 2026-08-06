@@ -1,22 +1,15 @@
-"""Pose estimation backend — MediaPipe BlazePose (Tasks API).
+"""MediaPipe BlazePose backend.
 
-3D landmarks are non-negotiable for this application. A lateral 2D view can measure knee
-and hip flexion, but the two errors we most need to catch in the frontal plane — knee
-valgus and lateral weight shift — are invisible to it: from the side, a caving knee is
-just a knee. BlazePose's ``pose_world_landmarks`` give metric 3D coordinates in a
-hip-centred frame, which is also what makes Phase 3's proportion normalization possible
-(segment lengths in metres rather than pixels, so they survive the lifter walking closer
-to or further from the camera).
+3D world landmarks are required rather than merely convenient: a lateral 2D view cannot
+see knee valgus, and metric hip-centred coordinates are what let segment lengths survive
+the lifter moving toward or away from the camera.
 
-The backend sits behind a ``PoseBackend`` Protocol so a YOLO-pose or RTMPose3D
-implementation can be dropped in without touching anything downstream, provided it emits
-the same ``PoseFrame`` contract.
+Sits behind the PoseBackend Protocol, so another model can replace it provided it emits
+the same PoseFrame contract.
 
-Running mode is ``VIDEO``, not ``LIVE_STREAM``. LIVE_STREAM delivers results through an
-async callback, which decouples result from frame and would force us to re-associate them
-by timestamp. We already bound latency in the capture stage by dropping stale frames, so
-the simpler synchronous call is the better trade: every ``PoseFrame`` is unambiguously
-paired with the image it came from, which the Phase 4/5 temporal segmentation depends on.
+Runs in VIDEO mode rather than LIVE_STREAM. The async callback would decouple result from
+frame and force timestamp re-association, and capture already bounds latency, so every
+PoseFrame stays unambiguously paired with the image it came from.
 """
 
 from __future__ import annotations

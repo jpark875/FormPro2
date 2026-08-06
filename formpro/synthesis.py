@@ -1,55 +1,30 @@
-"""Phase 7: synthesise reference profiles for builds the corpus does not cover.
+"""Synthesize reference profiles for builds the corpus does not cover.
 
-The analyzer projects a linear trend when a lifter falls outside the corpus. Projection
-is better than clamping, but it is still the weakest evidence in the system, and a lifter
-at 0.70 against anchors at 0.85 and 1.25 is being judged by a line drawn well past its
-last data point. Widening the corpus narrows how often that happens.
+Projection past the corpus edge is the weakest evidence in the system, so widening the
+span reduces how often it is needed.
 
-The model
----------
-Work in the sagittal plane with the ankle as origin, and hold the requirement that the
-bar stays over the midfoot. Let ``F`` be femur, ``T`` torso, ``S`` tibia, and let each
-segment's angle be measured from vertical. Reading horizontal offsets along the chain:
-
-    knee is forward of the ankle by      S*sin(shin)
-    hip is behind the knee by            F*sin(thigh)
-    shoulder is forward of the hip by    T*sin(back)
-
-Setting the shoulder back over the ankle and dividing through by ``T`` so only the ratio
-matters, with ``r = F/T`` and ``k = S/F``:
+Working in the sagittal plane with the bar held over the midfoot, reading horizontal
+offsets along the ankle-knee-hip-shoulder chain and dividing through by torso length
+leaves only the ratios:
 
     sin(back) = r * (sin(thigh) - k*sin(shin))
 
-That single line is the whole biomechanical claim: **the lean a lifter needs scales with
-femur-to-torso ratio.** A longer femur pushes the hips further back for the same knee
-bend, so the torso must incline further to bring the bar back over the midfoot.
+with r the femur-to-torso ratio and k the tibia-to-femur ratio. The lean a lifter needs
+scales with femur ratio, because a longer femur pushes the hips further back for the same
+knee bend. The remaining angles follow from the existing convention:
+shin = 90 - ankle_dorsiflexion, thigh = 180 - knee_flexion - shin, and
+hip_flexion = 180 - back - thigh, so hip flexion moves opposite to the back angle.
 
-The remaining angles follow from the existing convention. ``ankle_dorsiflexion`` is the
-shin against the foot's long axis, so ``shin = 90 - ankle_dorsiflexion``. ``knee_flexion``
-is the included angle at the knee, which gives ``thigh = 180 - knee_flexion - shin``. And
-``hip_flexion``, the included angle between torso and thigh, is ``180 - back - thigh``,
-so any change in back angle moves hip flexion by the same amount in the opposite
-direction.
+The shin and knee are held fixed and only the torso rotates. A real lifter would also
+change knee travel, stance and bar path, which needs assumptions about individual mobility
+this model has no basis for.
 
-What this deliberately does not model
--------------------------------------
-The shin and knee are held fixed and only the torso is rotated. A real lifter with a
-longer femur would also change knee travel, stance and bar path. Modelling that needs
-assumptions about individual mobility that this prototype has no basis for.
+The model is evaluated at the source ratio and at the target and only the difference is
+applied, so a recording keeps its own jitter and timing while only the build-driven
+component shifts. A poor absolute model still yields a usable relative warp.
 
-Rather than replace the recorded angles with model output, the model is evaluated at the
-source ratio and at the target ratio and only the **difference** is applied. The recording
-keeps its own character - its jitter, its timing, its idiosyncrasies - and only the
-build-driven component is shifted. It also means a bad absolute model still produces a
-usable relative warp.
-
-Synthetic profiles are not measurements
----------------------------------------
-A generated profile encodes this model's assumption, not an observed lifter. If the model
-is wrong, the analyzer will apply a wrong band with exactly the same confidence it applies
-a measured one. Generated files are marked ``reference_optimal_synthetic`` with provenance
-in their metadata so they can always be told apart, and they should be replaced by real
-recordings as those become available.
+Generated profiles encode this model, not an observed lifter, and are marked
+reference_optimal_synthetic with provenance in their metadata.
 """
 
 from __future__ import annotations
@@ -207,7 +182,7 @@ def build_document(
     exercise: str,
     fps_target: float | None,
 ) -> dict:
-    """Assemble a reference file in the Phase 4 schema.
+    """Assemble a reference file in the reference schema.
 
     Frames are serialized through ``KinematicFrame.to_json_frame()``, the same call the
     live path uses, so a generated file cannot drift from what the loader expects.

@@ -1,7 +1,7 @@
-"""Phase 6 tests: web transport and telemetry.
+"""Web transport and telemetry.
 
-The pipeline itself is faked. What matters here is that one camera feeds many viewers,
-that telemetry serialises cleanly, and that the server refuses to run without a corpus.
+The pipeline is faked. What matters here is that one camera feeds many viewers, that
+telemetry serialises cleanly, and that the server refuses to run without a corpus.
 """
 
 from __future__ import annotations

@@ -1,13 +1,11 @@
-"""Phase 6: OpenCV rendering of the skeleton and the telemetry HUD.
+"""OpenCV rendering of the skeleton and the HUD.
 
-Kept out of ``app.py`` so the main loop stays readable and so drawing can be exercised
-without a camera. Everything here is pure: it takes state and a canvas and returns a
-canvas, holding no pipeline references of its own.
+Separate from app.py so the loop stays plumbing and drawing can be exercised without a
+camera. Pure: state and a canvas in, canvas out.
 
-Display mirroring happens at the very end, after the skeleton is drawn. Mirroring the
-frame before inference would swap the lifter's anatomical left and right and invert every
-per-side finding, so the flip is applied to the finished composite instead. The HUD text
-is drawn after the flip so it stays readable.
+Mirroring is applied to the finished composite, after the skeleton and before the HUD.
+Flipping before inference would swap the lifter's anatomical left and right and invert
+every per-side finding.
 """
 
 from __future__ import annotations
@@ -21,8 +19,8 @@ from .form_analyzer import AnalysisResult
 from .kinematics import BodyProportions, KinematicFrame
 from .schema import LM, SIDE_LANDMARKS, Phase, PoseFrame, Side
 
-# BGR. The near/far split is the one thing a user must be able to confirm at a glance,
-# so it gets the strongest contrast in the palette.
+# BGR. Near and far take the strongest contrast in the palette, since side resolution
+# is the thing to be able to confirm at a glance.
 NEAR = (120, 255, 120)
 FAR = (150, 120, 60)
 OCCLUDED = (70, 70, 70)

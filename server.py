@@ -1,26 +1,17 @@
-"""FormPro2 web prototype: MJPEG video plus a JSON telemetry feed.
+"""Web front end: MJPEG video and a JSON telemetry feed.
 
     python server.py [--host 0.0.0.0] [--port 8000] [--reference data/reference]
 
-Then open http://127.0.0.1:8000.
+One camera and one pipeline serve several viewers, so the pipeline runs in a worker thread
+and publishes the latest annotated frame while handlers only read it. Per-request
+inference would mean two browser tabs competing for one camera, and a page refresh
+restarting calibration mid-set.
 
-Why a worker thread rather than analysing inside the request
-------------------------------------------------------------
-There is one camera and one pipeline, but potentially several viewers. The pipeline
-therefore runs in its own thread and publishes the latest annotated frame; HTTP handlers
-only read that. Running inference per request would mean two browser tabs competing for
-one camera, and a page refresh restarting a lifter's calibration mid-set.
+The publish slot holds one frame, the same drop-old policy the capture stage uses, so a
+viewer on a slow link falls behind by skipping rather than by accumulating stale frames.
 
-The publish slot holds exactly one frame, the same drop-old policy the capture stage
-uses. A viewer on a slow connection falls behind by dropping frames rather than by
-accumulating a backlog of stale ones, so what it shows stays current.
-
-Split of responsibilities with the desktop UI
----------------------------------------------
-The MJPEG stream carries the skeleton only. Telemetry lives in the HTML panel, where it
-is selectable, readable at any size, and does not consume video bandwidth to redraw text
-that has not changed. ``overlay.draw_skeleton`` is shared with the desktop path; the HUD
-drawing is not used here.
+The stream carries the skeleton only. Telemetry lives in the HTML panel, where it is
+selectable and costs no video bandwidth to redraw text that has not changed.
 """
 
 from __future__ import annotations

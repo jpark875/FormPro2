@@ -1,18 +1,15 @@
-"""FormPro2 main loop: real-time barbell back squat form analysis.
+"""FormPro2 desktop front end.
 
     python app.py [--config configs/squat.yaml] [--reference data/reference]
 
-Keys: q or Esc to quit, r to reset the session (new lifter or new set).
+Keys: q or Esc to quit, r to reset the session.
 
-The loop is deliberately thin. Every stage is constructed once, then each frame walks the
-pipeline in order: capture and pose (Phase 2), normalization (Phase 3), rep segmentation,
-comparison against the corpus (Phase 5), render (Phase 6). Anything more interesting than
-plumbing belongs in the module that owns it.
+Each frame walks the pipeline in order: capture and pose, normalization, rep segmentation,
+comparison against the corpus, render. Anything more interesting than plumbing belongs in
+the module that owns it.
 
-The corpus is loaded before the camera opens. Phase 5 derives every bound it applies from
-reference data and has no baseline to fall back on, so a missing or malformed corpus is a
-startup failure, not a degraded mode. Starting anyway would produce an application that
-looks like it is working and silently passes every rep.
+The corpus loads before the camera opens. The analyzer derives every bound from it and has
+no fallback, so a missing corpus is a startup failure rather than a degraded mode.
 """
 
 from __future__ import annotations
@@ -67,7 +64,7 @@ def run(config: AppConfig, reference_root: Path | None, mirror: bool) -> int:
     except DatasetError as exc:
         log.error("cannot load the reference corpus: %s", exc)
         log.error(
-            "Phase 5 derives every threshold from this corpus and has no fallback. "
+            "Every threshold is derived from this corpus and there is no fallback. "
             "Check the directory, or run: python scripts/validate_dataset.py"
         )
         return 2

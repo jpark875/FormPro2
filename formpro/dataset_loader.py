@@ -1,25 +1,15 @@
-"""Phase 4: reference dataset ingestion.
+"""Reference dataset ingestion.
 
-Loads a directory of labelled reference sequences into ``KinematicFrame`` objects — the
-same type ``kinematics.py`` produces for live data. That identity is the point: Phase 5
-compares live against reference without a translation layer sitting between them, where
-a units mismatch or a field rename could hide indefinitely.
+Loads labelled reference sequences into KinematicFrame, the same type the live path
+produces, so comparison needs no translation layer where a units mismatch or a field
+rename could hide.
 
-Validation is strict and loud
------------------------------
-Every field is checked on load and a bad file raises rather than being skipped with a
-warning. A silently dropped reference file does not break anything visibly; it just
-quietly removes an anchor point from the corpus, and the tolerance band Phase 5
-interpolates then narrows around whichever builds happened to survive. Failing at load
-is the only way that surfaces.
+Validation raises rather than warns. A silently skipped file breaks nothing visibly, it
+just removes an anchor point from the corpus, and the interpolated band then narrows
+around whichever builds happened to survive.
 
-Corpus, not file
-----------------
-Phase 5 needs the acceptable band for a lifter of a particular build, which requires
-reference subjects at several ``femur_to_torso_ratio`` values to interpolate between.
-``ReferenceCorpus`` therefore indexes sequences by ratio and exposes bracketing lookup,
-so a live lifter at 1.05 is placed between the 0.95 and 1.12 references rather than
-snapped to whichever is closest.
+ReferenceCorpus indexes sequences by femur_to_torso_ratio and exposes bracketing lookup,
+so a lifter is placed between the two nearest builds rather than snapped to the closest.
 """
 
 from __future__ import annotations
@@ -110,8 +100,8 @@ class ReferenceSequence:
     def slice_phase(self, phase: Phase) -> np.ndarray:
         """Indices of frames in the given phase.
 
-        Phase 5 aligns like against like — a live concentric against reference
-        concentric frames — rather than warping a whole rep against a whole rep, which
+        The analyzer aligns like against like, a live concentric against reference
+        concentric frames, rather than warping a whole rep against a whole rep, which
         would let a slow descent absorb a fast, broken ascent.
         """
         return np.array([i for i, f in enumerate(self.frames) if f.phase is phase], dtype=int)
@@ -169,9 +159,9 @@ class ReferenceCorpus:
     ) -> tuple[ReferenceSequence | None, ReferenceSequence | None]:
         """The nearest reference below and above a live lifter's ratio.
 
-        Either side may be ``None`` when the lifter falls outside the corpus. Phase 5
-        must treat a one-sided bracket as extrapolation and widen its tolerance
-        accordingly, rather than trusting a band anchored on one side only.
+        Either side is ``None`` when the lifter falls outside the corpus. A one-sided
+        bracket is extrapolation and must be treated as such, rather than trusting a
+        band anchored on one side only.
         """
         if not self.sequences or math.isnan(femur_to_torso_ratio):
             return None, None

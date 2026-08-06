@@ -1,32 +1,19 @@
-"""Phase 5: real-time comparison against the reference corpus.
+"""Real-time comparison against the reference corpus.
 
-This module is an inference engine over Phase 4's evidence. It contains no baseline
-thresholds and no fallback constants: every bound it applies is computed at runtime from
-reference frames labelled ``optimal_form``, then adjusted to the live lifter's build.
-If the corpus is empty the analyzer refuses to start rather than degrading to guesses,
-because an analyzer that silently falls back to hardcoded numbers looks identical to one
-that is working and passes every rep.
+An inference engine over the corpus, holding no baseline thresholds and no fallback
+constants. Every bound is computed at runtime from reference frames labelled optimal_form,
+then adjusted to the live lifter's build. An empty corpus is a startup failure, since an
+analyzer that falls back to hardcoded numbers is indistinguishable from one that is
+working and passes every rep.
 
-How a bound is produced
------------------------
-1. Every reference frame labelled ``optimal_form`` is pooled by subject build, giving one
-   ``ThresholdProfile`` per distinct ``femur_to_torso_ratio`` in the corpus. Error files
-   contribute too: the clean eccentric of a good-morning rep is still optimal evidence.
-2. Within a profile, frames are grouped by phase, and each feature gets a percentile band.
-   Bands are per phase because the acceptable knee angle at the bottom has nothing to do
-   with the acceptable knee angle during setup.
-3. At evaluation time the live lifter's ratio is passed to ``ReferenceCorpus.bracketing``.
-   Between two profiles the bands are blended by distance. Outside the corpus they are
-   projected along the trend of the two nearest profiles, with a warning, because a lifter
-   with an unusual build is exactly the case where a corpus-average bound would be wrong.
+Bounds are built by pooling optimal_form frames per subject build, grouping them by phase
+and taking a percentile band per feature. Error frames never contribute; folding them in
+would widen the band to admit the thing being detected. At evaluation time the lifter's
+ratio is bracketed against the corpus: between two profiles the bands blend by distance,
+outside it they project along the trend of the two nearest.
 
-Thresholds are evidence. Interpretation is domain knowledge
------------------------------------------------------------
-``ERROR_SIGNATURES`` maps a feature deviating in a particular direction during a
-particular phase onto a named error. That table carries no numbers — it says *which*
-error a deviation means, never *how far* is too far. The magnitudes come entirely from
-the corpus. Keeping the two separate is what allows the bounds to stay fully dynamic
-while the messages stay specific enough to act on.
+ERROR_SIGNATURES carries no magnitudes. It records which error a deviation means, never
+how far is too far, so the bounds stay evidence while the cues stay specific.
 """
 
 from __future__ import annotations
@@ -620,7 +607,7 @@ class FormAnalyzer:
 
         margin = (runner_up - top) / runner_up
         if margin < self.config.min_confidence_margin:
-            # Two labels fit about equally well; reporting either would be a coin toss.
+            # Two labels fit about equally well, so reporting either would be arbitrary.
             self._segment_label, self._segment_confidence = None, 0.0
         else:
             self._segment_label, self._segment_confidence = top_label, margin

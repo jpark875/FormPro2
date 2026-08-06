@@ -1,19 +1,17 @@
 """Data contracts shared by every stage of the pipeline.
 
-This module is deliberately dependency-light (numpy only). Phases 3–5 import the
-``PoseFrame`` contract; nothing here may import MediaPipe, so the pose backend stays
-swappable and the kinematics/analysis code stays unit-testable without a camera.
+numpy only, and never imports MediaPipe, so the pose backend stays swappable and the
+kinematics and analysis code stay testable without a camera.
 
-Coordinate conventions
-----------------------
-``image_xyz``  normalized [0,1], origin top-left, **Y down**. Rendering only.
-``world_xyz``  metres, origin at the hip midpoint, X right, **Y up**, Z toward camera.
+Two landmark spaces, not interchangeable:
+
+    image_xyz  normalized [0,1], origin top-left, Y down. Rendering only.
+    world_xyz  metres, origin at the hip midpoint, X right, Y up, Z toward camera.
                All biomechanics use this space.
 
-MediaPipe emits world landmarks Y-down / Z-away-from-camera. ``PoseFrame.from_mediapipe``
-negates both axes so world space is a conventional right-handed Y-up system. Getting this
-wrong silently inverts every depth and back-angle calculation downstream, so the flip
-happens exactly once, here, at the boundary.
+MediaPipe emits world landmarks Y-down and Z-away. PoseFrame.from_mediapipe negates both
+so world space is a conventional right-handed Y-up system. The flip happens once, here,
+because getting it wrong inverts every depth and back-angle calculation downstream.
 """
 
 from __future__ import annotations
@@ -42,9 +40,9 @@ class Side(IntEnum):
 class Phase(str, Enum):
     """Rep cycle vocabulary.
 
-    Shared verbatim between the live segmenter and the reference dataset. Both sides
-    of the comparison must speak the same words or Phase 5 would be aligning a live
-    ``bottom`` against a reference ``eccentric`` and calling the difference form.
+    Shared verbatim between the live segmenter and the reference dataset. Both sides of
+    the comparison must speak the same words, or the analyzer would align a live
+    ``bottom`` against a reference ``eccentric`` and call the difference form.
     """
 
     SETUP = "setup"           # standing, un-racking, bracing
@@ -108,8 +106,8 @@ class LM(IntEnum):
 
 
 #: The only joints the squat analysis depends on. Visibility gating and the reference
-#: dataset schema are both defined over this subset, not all 33 landmarks — a lifter's
-#: wrists and face may be occluded or out of frame without invalidating a rep.
+#: dataset schema are both defined over this subset rather than all 33 landmarks: a
+#: lifter's wrists and face may be occluded without invalidating a rep.
 SQUAT_JOINTS: tuple[LM, ...] = (
     LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER,
     LM.LEFT_HIP, LM.RIGHT_HIP,
@@ -155,9 +153,9 @@ SQUAT_SKELETON: tuple[tuple[LM, LM], ...] = (
 class Frame:
     """A raw camera frame with a capture timestamp.
 
-    ``timestamp_ms`` is monotonic and measured from stream start — never wall-clock,
+    ``timestamp_ms`` is monotonic and measured from stream start, never wall-clock,
     which can jump backwards and would corrupt both MediaPipe's tracker state and the
-    velocity terms used for phase segmentation in Phase 4.
+    velocity terms used for rep segmentation.
     """
 
     index: int
@@ -177,10 +175,10 @@ class PoseFrame:
 
     index: int
     timestamp_ms: int
-    world_xyz: np.ndarray     # (33, 3) float32 — metres, hip-origin, Y up
-    image_xyz: np.ndarray     # (33, 3) float32 — normalized, Y down
-    visibility: np.ndarray    # (33,)   float32 — 0..1, landmark not occluded
-    presence: np.ndarray      # (33,)   float32 — 0..1, landmark inside the frame
+    world_xyz: np.ndarray     # (33, 3) float32, metres, hip-origin, Y up
+    image_xyz: np.ndarray     # (33, 3) float32, normalized, Y down
+    visibility: np.ndarray    # (33,)   float32, 0..1, landmark not occluded
+    presence: np.ndarray      # (33,)   float32, 0..1, landmark inside the frame
 
     def __post_init__(self) -> None:
         for name, arr, shape in (
@@ -221,7 +219,7 @@ class PoseFrame:
         """Which of ``joints`` fall below the confidence threshold.
 
         Callers should suppress any finding that depends on a missing joint rather than
-        reporting a form error derived from a guessed coordinate — a false "knees caving
+        reporting a form error derived from a guessed coordinate. A false "knees caving
         in" cue costs more trust than saying nothing for a few frames.
         """
         return tuple(j for j in joints if not self.is_visible(j, threshold))

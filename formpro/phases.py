@@ -1,23 +1,17 @@
 """Rep cycle segmentation from hip trajectory.
 
-Splits the lift into ``setup / eccentric / bottom / concentric / recovery`` by tracking
-the vertical position of the hips over time. The live segmenter must emit exactly the
-vocabulary the reference dataset uses, or Phase 5 would align a live ``bottom`` against
-a reference ``eccentric`` and report the mismatch as a form error.
+Splits the lift into setup, eccentric, bottom, concentric and recovery. The vocabulary is
+shared verbatim with the reference dataset, or the analyzer would align a live bottom
+against a reference eccentric and report the mismatch as a form error.
 
-Velocity, not frame deltas
---------------------------
-Hip velocity is computed as a least-squares slope over a fixed **time** window using
-capture timestamps, never as a difference over frame counts. Two reasons, and the first
-is structural: Phase 2 deliberately drops frames when inference falls behind, so
-consecutive frames are not evenly spaced and a per-frame delta would read a dropped
-frame as a sudden acceleration. The second is that ``error_good_morning`` is defined by
-the hips rising faster than the shoulders, which is a physical rate; it is only
-meaningful in units of per-second.
+Hip velocity is a least-squares slope over a fixed time window from capture timestamps,
+never a difference over frame counts. Capture drops frames under load, so consecutive
+frames are not evenly spaced and a per-frame delta would read a dropped frame as
+acceleration. error_good_morning is defined by a physical rate, which only means anything
+per second.
 
-Both the position and the velocity are body-size normalized. Hip height arrives as a
-fraction of the lifter's own leg length, so velocity is in leg-lengths per second and a
-single threshold set covers every lifter.
+Position and velocity are both divided by the lifter's own leg length, so one threshold
+set covers every body size.
 """
 
 from __future__ import annotations
@@ -113,7 +107,7 @@ class PhaseSegmenter:
 
     Every transition must hold for ``min_dwell_frames`` consecutive frames before it
     commits. Without that, noise around a threshold produces a burst of phase flips, and
-    a phase that flickers is worse than one that lags: Phase 5 keys its comparison
+    a phase that flickers is worse than one that lags: the analyzer keys its comparison
     window off the phase, so a single spurious ``concentric`` frame mid-descent pulls in
     the wrong reference segment entirely.
     """
@@ -199,7 +193,7 @@ class PhaseSegmenter:
 
         if self._phase is Phase.ECCENTRIC:
             if moving_up:
-                # Bounced straight out of the hole with no pause, which is the norm.
+                # Bounced out of the hole with no pause, which is the common case.
                 return Phase.CONCENTRIC
             if still and height < cfg.descended_height:
                 return Phase.BOTTOM
