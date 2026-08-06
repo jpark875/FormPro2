@@ -179,7 +179,8 @@ def test_processor_streams_video_file(tmp_path):
 
     cfg = AppConfig(
         camera=CameraConfig(source=str(clip), width=160, height=120,
-                            warmup_frames=0, read_timeout_s=1.0),
+                            warmup_frames=0, read_timeout_s=1.0,
+                            pace_file_playback=False),
         pose=PoseConfig(smoothing=SmoothingConfig(enabled=False)),
     )
     backend = _FakeBackend()
@@ -192,6 +193,57 @@ def test_processor_streams_video_file(tmp_path):
     stamps = [f.frame.timestamp_ms for f in frames]
     assert stamps == sorted(stamps)
     assert all(f.inference_ms >= 0 for f in frames)
+
+
+def test_file_playback_is_paced_to_the_recorded_frame_rate(tmp_path):
+    """Unpaced, the reader races a clip and drop-old discards nearly all of it."""
+    import time
+
+    import cv2
+
+    from formpro.capture import CameraStream
+
+    clip = tmp_path / "paced.avi"
+    writer = cv2.VideoWriter(str(clip), cv2.VideoWriter_fourcc(*"MJPG"), 20, (64, 48))
+    assert writer.isOpened()
+    for i in range(20):
+        writer.write(np.full((48, 64, 3), i * 5, dtype=np.uint8))
+    writer.release()
+
+    started = time.monotonic()
+    with CameraStream(
+        CameraConfig(source=str(clip), warmup_frames=0, read_timeout_s=0.1)
+    ) as camera:
+        frames = list(camera.frames())
+        dropped = camera.dropped
+    elapsed = time.monotonic() - started
+
+    # 20 frames at 20 fps is about a second; unpaced this completes almost instantly.
+    assert elapsed > 0.7
+    assert len(frames) >= 15, "paced playback should not be dropping frames"
+    assert dropped <= 2
+
+
+def test_pacing_can_be_disabled(tmp_path):
+    import time
+
+    import cv2
+
+    from formpro.capture import CameraStream
+
+    clip = tmp_path / "fast.avi"
+    writer = cv2.VideoWriter(str(clip), cv2.VideoWriter_fourcc(*"MJPG"), 20, (64, 48))
+    for i in range(20):
+        writer.write(np.full((48, 64, 3), i * 5, dtype=np.uint8))
+    writer.release()
+
+    started = time.monotonic()
+    with CameraStream(
+        CameraConfig(source=str(clip), warmup_frames=0, read_timeout_s=0.1,
+                     pace_file_playback=False)
+    ) as camera:
+        list(camera.frames())
+    assert time.monotonic() - started < 0.5
 
 
 def test_processor_reset_forwards_to_backend():
