@@ -70,14 +70,23 @@ class KinematicsConfig:
     calibration_window_frames: int = 150
     calibration_min_frames: int = 45
 
-    #: (femur_to_torso_ratio, max back_to_vertical degrees) anchors, interpolated
-    #: linearly. Fallback only, until Phase 5 derives the band from the corpus.
-    back_angle_anchors: tuple[tuple[float, float], ...] = ((0.85, 38.0), (1.30, 52.0))
-
     #: Distance-metric weight for the partially occluded camera-far side.
     camera_far_weight: float = 0.35
-    #: Rescales the dimensionless width ratio into the angles' degree range.
-    width_ratio_scale_deg: float = 60.0
+
+    #: Variance equivalence for the one dimensionless feature. A deviation of
+    #: ``width_ratio_equivalent_delta`` in knee_to_hip_width_ratio is treated as
+    #: biomechanically as severe as ``width_ratio_equivalent_degrees`` of joint-angle
+    #: deviation, which yields the scale factor between the two units. Stated as the
+    #: equivalence rather than as a bare multiplier so the reasoning is reviewable.
+    width_ratio_equivalent_degrees: float = 15.0
+    width_ratio_equivalent_delta: float = 0.1
+
+    @property
+    def width_ratio_scale(self) -> float:
+        """Degrees of angle deviation per unit of width-ratio deviation."""
+        if self.width_ratio_equivalent_delta <= 0:
+            raise ValueError("width_ratio_equivalent_delta must be positive")
+        return self.width_ratio_equivalent_degrees / self.width_ratio_equivalent_delta
 
 
 @dataclass(frozen=True)
@@ -115,6 +124,34 @@ class DatasetConfig:
 
 
 @dataclass(frozen=True)
+class AnalyzerConfig:
+    #: Percentiles of the corpus's optimal-form frames that define the acceptable band.
+    #: These select which evidence counts as normal; they are not thresholds themselves.
+    band_low_percentile: float = 5.0
+    band_high_percentile: float = 95.0
+    #: A phase/feature with fewer optimal reference frames than this yields no band, and
+    #: findings that would depend on it are withheld rather than guessed.
+    min_band_samples: int = 8
+
+    #: Allowance in degrees added to each side of a corpus band, covering pose-estimator
+    #: jitter rather than any biomechanical judgement. Scaled by the feature's weight so
+    #: it means the same thing for the width ratio as for an angle.
+    noise_allowance_deg: float = 2.0
+
+    #: Consecutive frames a deviation must persist before it surfaces, and how long a
+    #: surfaced finding lingers once it clears. Prevents the HUD flickering per frame.
+    finding_hold_frames: int = 4
+    finding_decay_frames: int = 10
+
+    #: Sakoe-Chiba band as a fraction of sequence length, bounding DTW warping so a
+    #: slow live descent cannot align against a fast reference ascent.
+    dtw_band_ratio: float = 0.2
+    #: Minimum relative margin between best and runner-up label before a DTW
+    #: classification is reported rather than treated as inconclusive.
+    min_confidence_margin: float = 0.12
+
+
+@dataclass(frozen=True)
 class AppConfig:
     exercise: str = "barbell_back_squat"
     camera: CameraConfig = CameraConfig()
@@ -122,6 +159,7 @@ class AppConfig:
     kinematics: KinematicsConfig = KinematicsConfig()
     phases: PhaseConfig = PhaseConfig()
     dataset: DatasetConfig = DatasetConfig()
+    analyzer: AnalyzerConfig = AnalyzerConfig()
 
     @classmethod
     def load(cls, path: str | Path | None = None) -> AppConfig:
