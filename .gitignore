@@ -14,3 +14,8 @@ data/recordings/
 data/raw/
 *.mp4
 *.avi
+
+# Reference corpora are gym- and lifter-specific data, and synthetic profiles must
+# never be mistaken for recorded ground truth once they are in version control.
+# Recordings are yours to keep or share deliberately: git add -f to track one.
+data/reference/*.json
