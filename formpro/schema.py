@@ -1,17 +1,7 @@
-"""Data contracts shared by every stage of the pipeline.
+"""Shared data contracts.
 
-numpy only, and never imports MediaPipe, so the pose backend stays swappable and the
-kinematics and analysis code stay testable without a camera.
-
-Two landmark spaces, not interchangeable:
-
-    image_xyz  normalized [0,1], origin top-left, Y down. Rendering only.
-    world_xyz  metres, origin at the hip midpoint, X right, Y up, Z toward camera.
-               All biomechanics use this space.
-
-MediaPipe emits world landmarks Y-down and Z-away. PoseFrame.from_mediapipe negates both
-so world space is a conventional right-handed Y-up system. The flip happens once, here,
-because getting it wrong inverts every depth and back-angle calculation downstream.
+world_xyz: metres, hip origin, X right, Y up, Z toward camera. Used for biomechanics.
+image_xyz: normalized [0, 1], Y down. Used for rendering only.
 """
 
 from __future__ import annotations
@@ -27,7 +17,8 @@ NUM_LANDMARKS = 33
 
 class Side(IntEnum):
     """Anatomical side. Distinct from camera-near/camera-far, which is a viewing
-    relationship resolved per frame by the kinematics engine."""
+    relationship resolved per frame by the kinematics engine.
+    """
 
     LEFT = 0
     RIGHT = 1
@@ -38,12 +29,7 @@ class Side(IntEnum):
 
 
 class Phase(str, Enum):
-    """Rep cycle vocabulary.
-
-    Shared verbatim between the live segmenter and the reference dataset. Both sides of
-    the comparison must speak the same words, or the analyzer would align a live
-    ``bottom`` against a reference ``eccentric`` and call the difference form.
-    """
+    """Rep cycle vocabulary."""
 
     SETUP = "setup"           # standing, un-racking, bracing
     ECCENTRIC = "eccentric"   # descent
@@ -53,12 +39,7 @@ class Phase(str, Enum):
 
 
 class FormLabel(str, Enum):
-    """Per-frame form classification.
-
-    Evaluated per frame, not per file: a good-morning squat typically has a clean
-    eccentric and breaks only once the concentric begins, so one sequence legitimately
-    transitions between labels partway through.
-    """
+    """Per-frame form classification."""
 
     OPTIMAL = "optimal_form"
     HIGH_SQUAT = "error_high_squat"
@@ -105,9 +86,7 @@ class LM(IntEnum):
     RIGHT_FOOT_INDEX = 32
 
 
-#: The only joints the squat analysis depends on. Visibility gating and the reference
-#: dataset schema are both defined over this subset rather than all 33 landmarks: a
-#: lifter's wrists and face may be occluded without invalidating a rep.
+#: Joints the squat analysis depends on.
 SQUAT_JOINTS: tuple[LM, ...] = (
     LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER,
     LM.LEFT_HIP, LM.RIGHT_HIP,
@@ -117,8 +96,7 @@ SQUAT_JOINTS: tuple[LM, ...] = (
     LM.LEFT_FOOT_INDEX, LM.RIGHT_FOOT_INDEX,
 )
 
-#: Per-side landmark lookup, so kinematics can be written once and applied to whichever
-#: side turns out to be nearest the camera.
+#: Per-side landmark lookup.
 SIDE_LANDMARKS: dict[Side, dict[str, LM]] = {
     Side.LEFT: {
         "shoulder": LM.LEFT_SHOULDER, "hip": LM.LEFT_HIP, "knee": LM.LEFT_KNEE,
@@ -151,12 +129,7 @@ SQUAT_SKELETON: tuple[tuple[LM, LM], ...] = (
 
 @dataclass(frozen=True)
 class Frame:
-    """A raw camera frame with a capture timestamp.
-
-    ``timestamp_ms`` is monotonic and measured from stream start, never wall-clock,
-    which can jump backwards and would corrupt both MediaPipe's tracker state and the
-    velocity terms used for rep segmentation.
-    """
+    """A raw camera frame with a capture timestamp."""
 
     index: int
     timestamp_ms: int
@@ -190,8 +163,6 @@ class PoseFrame:
             if arr.shape != shape:
                 raise ValueError(f"{name}: expected shape {shape}, got {arr.shape}")
 
-    # -- accessors -------------------------------------------------------------
-
     def world(self, joint: LM) -> np.ndarray:
         """3D metric position of one joint, shape (3,)."""
         return self.world_xyz[int(joint)]
@@ -209,25 +180,16 @@ class PoseFrame:
     def world_midpoint(self, a: LM, b: LM) -> np.ndarray:
         return 0.5 * (self.world(a) + self.world(b))
 
-    # -- quality gating --------------------------------------------------------
-
     def is_visible(self, joint: LM, threshold: float) -> bool:
         i = int(joint)
         return bool(self.visibility[i] >= threshold and self.presence[i] >= threshold)
 
     def missing(self, joints: Iterable[LM], threshold: float) -> tuple[LM, ...]:
-        """Which of ``joints`` fall below the confidence threshold.
-
-        Callers should suppress any finding that depends on a missing joint rather than
-        reporting a form error derived from a guessed coordinate. A false "knees caving
-        in" cue costs more trust than saying nothing for a few frames.
-        """
+        """Which of ``joints`` fall below the confidence threshold."""
         return tuple(j for j in joints if not self.is_visible(j, threshold))
 
     def is_analysable(self, threshold: float, joints: Sequence[LM] = SQUAT_JOINTS) -> bool:
         return not self.missing(joints, threshold)
-
-    # -- construction ----------------------------------------------------------
 
     @classmethod
     def from_mediapipe(
@@ -237,11 +199,7 @@ class PoseFrame:
         world_landmarks: Sequence,
         image_landmarks: Sequence,
     ) -> PoseFrame:
-        """Convert MediaPipe landmark lists into a ``PoseFrame``.
-
-        This is the one place the MediaPipe axis convention is translated; see the
-        module docstring.
-        """
+        """Convert MediaPipe landmark lists into a ``PoseFrame``."""
         world = _landmarks_to_array(world_landmarks)
         image = _landmarks_to_array(image_landmarks)
 

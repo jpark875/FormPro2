@@ -1,12 +1,4 @@
-"""OpenCV rendering of the skeleton and the HUD.
-
-Separate from app.py so the loop stays plumbing and drawing can be exercised without a
-camera. Pure: state and a canvas in, canvas out.
-
-Mirroring is applied to the finished composite, after the skeleton and before the HUD.
-Flipping before inference would swap the lifter's anatomical left and right and invert
-every per-side finding.
-"""
+"""OpenCV rendering of the skeleton and HUD."""
 
 from __future__ import annotations
 
@@ -19,8 +11,7 @@ from .form_analyzer import AnalysisResult
 from .kinematics import BodyProportions, KinematicFrame
 from .schema import LM, SIDE_LANDMARKS, Phase, PoseFrame, Side
 
-# BGR. Near and far take the strongest contrast in the palette, since side resolution
-# is the thing to be able to confirm at a glance.
+# BGR.
 NEAR = (120, 255, 120)
 FAR = (150, 120, 60)
 OCCLUDED = (70, 70, 70)

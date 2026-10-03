@@ -1,9 +1,4 @@
-"""Analyzer: corpus-derived bounds, build adjustment and error detection.
-
-The recurring assertion is that nothing is hardcoded. Change the corpus and the bounds
-move with it; empty the corpus and the analyzer refuses to run rather than fall back to
-a constant.
-"""
+"""Analyzer tests: corpus-derived bounds, build adjustment and error detection."""
 
 from __future__ import annotations
 
@@ -65,11 +60,7 @@ def frame_dict(frame_id, timestamp_ms, phase, values, label, jitter=0.0):
 
 
 def reference_doc(ratio: float, *, back_offset: float = 0.0, repeats: int = 12) -> dict:
-    """A clean rep for a subject of the given build.
-
-    ``back_offset`` shifts every back_to_vertical value, which is how a longer-femur
-    subject is represented: their optimal lean genuinely is further forward.
-    """
+    """A clean rep for a subject of the given build."""
     frames, frame_id, timestamp = [], 0, 0
     for phase in (Phase.SETUP, Phase.ECCENTRIC, Phase.BOTTOM,
                   Phase.CONCENTRIC, Phase.RECOVERY):
@@ -126,9 +117,6 @@ def feed(analyzer, phase, values, ratio, count=6, start_ms=0):
     return result
 
 
-# -- profile construction ------------------------------------------------------
-
-
 def test_bands_come_from_the_corpus(tmp_path):
     corpus = write_corpus(tmp_path, [(0.90, 0.0)])
     profiles = build_profiles(corpus, ANALYZER)
@@ -164,8 +152,7 @@ def test_error_frames_do_not_widen_the_acceptable_band(tmp_path):
     corpus = load_corpus(tmp_path, DatasetConfig())
 
     profiles = build_profiles(corpus, ANALYZER)
-    # The error frames were the only concentric evidence, so no concentric band exists
-    # rather than one stretched to admit a 70-degree lean.
+    # Error frames were the only concentric evidence, so no band exists.
     assert profiles[0].band(Phase.CONCENTRIC, "camera_near.back_to_vertical") is None
     assert profiles[0].band(Phase.BOTTOM, "camera_near.back_to_vertical") is not None
 
@@ -196,9 +183,6 @@ def test_corpus_without_optimal_frames_refuses_to_build(tmp_path):
 def test_empty_corpus_refuses_to_analyze():
     with pytest.raises(AnalyzerError, match="empty"):
         FormAnalyzer(ReferenceCorpus(()), ANALYZER, KIN)
-
-
-# -- build adjustment ----------------------------------------------------------
 
 
 def test_thresholds_interpolate_between_bracketing_builds(tmp_path):
@@ -284,9 +268,6 @@ def test_resolve_before_calibration_raises(tmp_path):
     model = ThresholdModel(build_profiles(corpus, ANALYZER))
     with pytest.raises(AnalyzerError, match="calibration"):
         model.resolve(math.nan)
-
-
-# -- detection -----------------------------------------------------------------
 
 
 def analyzer_for(tmp_path):
@@ -418,9 +399,6 @@ def test_valgus_and_angle_deviations_are_ranked_on_one_scale(tmp_path):
     )
 
 
-# -- signature table -----------------------------------------------------------
-
-
 def test_signature_table_carries_no_magnitudes():
     """The table names errors; magnitudes must come from the corpus."""
     for signature in ERROR_SIGNATURES:
@@ -435,9 +413,6 @@ def test_every_error_label_has_a_signature():
     covered = {s.label for s in ERROR_SIGNATURES}
     expected = set(FormLabel) - {FormLabel.OPTIMAL}
     assert covered == expected
-
-
-# -- dtw -----------------------------------------------------------------------
 
 
 def test_dtw_is_zero_for_identical_sequences():

@@ -1,7 +1,6 @@
-"""Download the BlazePose ``.task`` model bundle.
+"""Download the BlazePose .task model.
 
-The Tasks API loads weights from a local file, and the bundles are 5–30 MB, so they are
-fetched on demand and git-ignored rather than committed.
+    python scripts/fetch_model.py [--variant heavy]
 """
 
 from __future__ import annotations

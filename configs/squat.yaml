@@ -1,5 +1,4 @@
 # FormPro2 configuration: barbell back squat.
-# Every tunable lives here. Modules take a config object and never hardcode numbers.
 
 exercise: barbell_back_squat
 
@@ -20,38 +19,31 @@ pose:
   min_presence_confidence: 0.6
   min_tracking_confidence: 0.6
 
-  # A joint below this is treated as unmeasured rather than trusted, and findings that
-  # depend on it are withheld instead of derived from a hallucinated coordinate.
+  # Joints below this visibility are treated as unmeasured.
   min_visibility: 0.5
 
   smoothing:
     enabled: true
-    # One-Euro. Higher beta reduces lag on fast reps; higher min_cutoff reduces jitter
-    # in a held position.
+    # Higher beta: less lag. Higher min_cutoff: less jitter.
     min_cutoff: 1.2
     beta: 0.35
     d_cutoff: 1.0
 
 kinematics:
-  # Depth attenuation for angle measurement only: 1.0 is a true 3D angle, 0.0 is
-  # projected onto the image plane. Segment lengths always use full 3D.
+  # Z attenuation for angles: 1.0 is true 3D, 0.0 is image-plane.
   z_weight: 0.6
 
-  # Camera-near side resolution. A larger hysteresis makes the side harder to flip.
   side_ema_alpha: 0.15
   side_hysteresis_m: 0.02
 
-  # Rolling window for segment-length calibration. At 30 fps, 150 frames is about 5 s
-  # and 45 frames about 1.5 s before proportions are first reported.
+  # Segment-length calibration window, in frames.
   calibration_window_frames: 150
   calibration_min_frames: 45
 
-  # The camera-far side is partially occluded at 45 degrees, so it contributes at
-  # reduced weight rather than equally or not at all.
+  # The far side is partially occluded, so it counts for less.
   camera_far_weight: 0.35
 
-  # Severity equivalence for the one dimensionless feature: 15 degrees per 0.1 of ratio,
-  # a scale factor of 150. Stated as an equivalence so the claim is reviewable.
+  # A 0.1 width-ratio deviation counts as 15 degrees of angle deviation.
   width_ratio_equivalent_degrees: 15.0
   width_ratio_equivalent_delta: 0.1
 
@@ -59,11 +51,11 @@ phases:
   velocity_window_ms: 150
   max_gap_ms: 250
 
-  # Leg-lengths per second, so one threshold set covers every body size.
+  # Leg lengths per second.
   move_velocity: 0.15
   still_velocity: 0.06
 
-  # Hip height as a fraction of leg length: about 1.0 standing, about 0.5 at depth.
+  # Hip height as a fraction of leg length.
   standing_height: 0.95
   descended_height: 0.90
 
@@ -71,15 +63,12 @@ phases:
   min_dwell_frames: 3
 
 analyzer:
-  # Percentiles of the corpus's optimal-form frames that define the acceptable band.
-  # These select which evidence counts as normal; no bound is written here, since every
-  # bound is computed from the corpus at runtime.
+  # Percentiles of optimal-form reference frames that define each band.
   band_low_percentile: 5.0
   band_high_percentile: 95.0
   min_band_samples: 8
 
-  # Covers pose-estimator jitter, not biomechanical judgement. Larger values suppress
-  # findings on reps that measure close to the band edge.
+  # Degrees of slack for pose-estimator jitter.
   noise_allowance_deg: 2.0
 
   finding_hold_frames: 4

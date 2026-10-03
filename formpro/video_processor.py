@@ -1,13 +1,4 @@
-"""Camera stream to pose stream.
-
-Owns the camera thread and the pose backend, and exposes the pipeline's single entry point
-for live data: an iterator of AnalysisFrame. Nothing downstream touches OpenCV or
-MediaPipe.
-
-AnalysisFrame.pose is None when nobody is in shot, represented explicitly rather than by
-skipping the frame: rep segmentation needs to know a gap occurred, so a dropout mid-descent
-breaks the rep instead of being stitched over.
-"""
+"""Camera stream to pose stream. pose is None when nobody is in shot."""
 
 from __future__ import annotations
 
@@ -51,13 +42,10 @@ class VideoProcessor:
         self._last_emit_s: float | None = None
         self._started = False
 
-    # -- lifecycle -------------------------------------------------------------
-
     def start(self) -> VideoProcessor:
         if self._started:
             raise RuntimeError("processor already started")
-        # Load the model first: it takes seconds, and the camera would otherwise sit
-        # open with its recording light on for the duration.
+        # Load the model before opening the camera.
         if self._backend is None:
             self._backend = BlazePoseEstimator(self.config.pose)
         self._camera.start()
@@ -76,8 +64,6 @@ class VideoProcessor:
 
     def __exit__(self, *exc_info: object) -> None:
         self.stop()
-
-    # -- streaming -------------------------------------------------------------
 
     def stream(self) -> Iterator[AnalysisFrame]:
         if not self._started:
@@ -101,8 +87,6 @@ class VideoProcessor:
         """Clear tracker state, e.g. at the start of a new set."""
         if self._backend is not None:
             self._backend.reset()
-
-    # -- telemetry -------------------------------------------------------------
 
     def _tick(self) -> float:
         """End-to-end throughput, EMA-smoothed so the HUD readout is stable."""

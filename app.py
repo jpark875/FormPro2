@@ -1,15 +1,8 @@
-"""FormPro2 desktop front end.
+"""Desktop front end.
 
     python app.py [--config configs/squat.yaml] [--reference data/reference]
 
-Keys: q or Esc to quit, r to reset the session.
-
-Each frame walks the pipeline in order: capture and pose, normalization, rep segmentation,
-comparison against the corpus, render. Anything more interesting than plumbing belongs in
-the module that owns it.
-
-The corpus loads before the camera opens. The analyzer derives every bound from it and has
-no fallback, so a missing corpus is a startup failure rather than a degraded mode.
+Keys: q or Esc to quit, r to reset.
 """
 
 from __future__ import annotations
@@ -89,9 +82,7 @@ def run(config: AppConfig, reference_root: Path | None, mirror: bool) -> int:
             result = None
 
             if pose is None:
-                # A dropout must break the rep rather than be stitched over; the
-                # segmenter also disarms so the next rep starts from a seen standing
-                # position rather than mid-descent.
+                # A dropout breaks the rep.
                 session.segmenter.on_tracking_lost()
                 session.phase = Phase.SETUP
             else:

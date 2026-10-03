@@ -1,4 +1,4 @@
-"""Camera and pose ingestion. No camera and no MediaPipe: the backend is faked."""
+"""Camera and pose ingestion tests. The pose backend is faked."""
 
 from __future__ import annotations
 
@@ -18,9 +18,6 @@ class _FakeLandmark:
 
 def _landmarks(fn):
     return [_FakeLandmark(*fn(i)) for i in range(NUM_LANDMARKS)]
-
-
-# -- schema --------------------------------------------------------------------
 
 
 def test_world_axes_are_flipped_to_y_up_z_toward_camera():
@@ -62,9 +59,6 @@ def test_rejects_wrong_landmark_count():
     with pytest.raises(ValueError):
         PoseFrame.from_mediapipe(0, 0, _landmarks(lambda i: (0, 0, 0))[:10],
                                  _landmarks(lambda i: (0, 0, 0)))
-
-
-# -- filters -------------------------------------------------------------------
 
 
 def test_one_euro_passes_first_sample_through():
@@ -112,9 +106,6 @@ def test_reset_clears_history():
     np.testing.assert_allclose(f(np.array([7.0], dtype=np.float32), 2.0), [7.0])
 
 
-# -- config --------------------------------------------------------------------
-
-
 def test_config_loads_shipped_yaml():
     cfg = AppConfig.load()
     assert cfg.exercise == "barbell_back_squat"
@@ -136,9 +127,6 @@ def test_config_nested_override(tmp_path):
     cfg = AppConfig.load(path)
     assert cfg.pose.smoothing.beta == 0.9
     assert cfg.pose.smoothing.min_cutoff == SmoothingConfig().min_cutoff
-
-
-# -- video_processor wiring ----------------------------------------------------
 
 
 class _FakeBackend:
@@ -221,12 +209,7 @@ def _time_playback(tmp_path, name, *, paced):
 
 
 def test_file_playback_is_paced_to_the_recorded_frame_rate(tmp_path):
-    """Unpaced, the reader races a clip and drop-old discards nearly all of it.
-
-    Both bounds are absolute with wide headroom rather than a ratio between the two
-    runs, which would compound the noise in two separate measurements. 20 frames at
-    20 fps is about a second paced, and roughly 0.15 s unpaced.
-    """
+    """Unpaced, the reader races a clip and drop-old discards nearly all of it."""
     paced, frames, dropped = _time_playback(tmp_path, "paced.avi", paced=True)
     unpaced, _, _ = _time_playback(tmp_path, "fast.avi", paced=False)
 

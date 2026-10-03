@@ -1,9 +1,6 @@
-"""Validate a reference dataset directory against the loader contract.
+"""Validate every file in a reference directory.
 
-Applies the same checks load_corpus applies at runtime, but reports every bad file instead
-of stopping at the first, so a corpus can be fixed in one pass.
-
-    python scripts/validate_dataset.py [data/reference] [--config configs/squat.yaml]
+    python scripts/validate_dataset.py [data/reference]
 """
 
 from __future__ import annotations

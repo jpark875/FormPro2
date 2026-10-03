@@ -1,4 +1,4 @@
-"""Reference ingestion: parsing, validation strictness and corpus indexing."""
+"""Reference ingestion tests."""
 
 from __future__ import annotations
 
@@ -72,9 +72,6 @@ def write(tmp_path, doc, name="ref.json"):
 CONFIG = DatasetConfig()
 
 
-# -- happy path ----------------------------------------------------------------
-
-
 def test_loads_a_valid_sequence(tmp_path):
     sequence = load_sequence(write(tmp_path, reference_doc()), CONFIG)
 
@@ -143,9 +140,6 @@ def test_legacy_camera_angle_still_loads(tmp_path, caplog):
     assert "legacy alias" in caplog.text
 
 
-# -- validation strictness -----------------------------------------------------
-
-
 def _near(doc: dict) -> dict:
     return doc["frames"][3]["angles"]["camera_near"]
 
@@ -208,9 +202,6 @@ def test_string_where_a_number_belongs_is_rejected(tmp_path):
     doc["frames"][2]["angles"]["camera_near"]["hip_flexion"] = "170"
     with pytest.raises(DatasetError, match="must be a number"):
         load_sequence(write(tmp_path, doc), CONFIG)
-
-
-# -- corpus --------------------------------------------------------------------
 
 
 def test_corpus_loads_a_directory(tmp_path):

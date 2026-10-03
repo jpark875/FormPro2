@@ -1,30 +1,7 @@
-"""Synthesize reference profiles for builds the corpus does not cover.
+"""Synthesizes reference profiles for builds the corpus does not cover.
 
-Projection past the corpus edge is the weakest evidence in the system, so widening the
-span reduces how often it is needed.
-
-Working in the sagittal plane with the bar held over the midfoot, reading horizontal
-offsets along the ankle-knee-hip-shoulder chain and dividing through by torso length
-leaves only the ratios:
-
-    sin(back) = r * (sin(thigh) - k*sin(shin))
-
-with r the femur-to-torso ratio and k the tibia-to-femur ratio. The lean a lifter needs
-scales with femur ratio, because a longer femur pushes the hips further back for the same
-knee bend. The remaining angles follow from the existing convention:
-shin = 90 - ankle_dorsiflexion, thigh = 180 - knee_flexion - shin, and
-hip_flexion = 180 - back - thigh, so hip flexion moves opposite to the back angle.
-
-The shin and knee are held fixed and only the torso rotates. A real lifter would also
-change knee travel, stance and bar path, which needs assumptions about individual mobility
-this model has no basis for.
-
-The model is evaluated at the source ratio and at the target and only the difference is
-applied, so a recording keeps its own jitter and timing while only the build-driven
-component shifts. A poor absolute model still yields a usable relative warp.
-
-Generated profiles encode this model, not an observed lifter, and are marked
-reference_optimal_synthetic with provenance in their metadata.
+With the bar over the midfoot, sin(back) = r * (sin(thigh) - k*sin(shin)), where
+r = femur/torso and k = tibia/femur. Only the source-to-target difference is applied.
 """
 
 from __future__ import annotations
@@ -36,8 +13,7 @@ from .kinematics import KinematicFrame, SideAngles
 
 _EPS = 1e-9
 
-#: Builds worth covering. Spans roughly the range seen in adult lifters, from a
-#: short-femur/long-torso build to the long-femur build that struggles to stay upright.
+#: Default femur_to_torso_ratio targets.
 DEFAULT_TARGET_RATIOS: tuple[float, ...] = (
     0.70, 0.75, 0.80, 0.90, 0.95, 1.05, 1.10, 1.15, 1.20, 1.30, 1.35,
 )
@@ -49,8 +25,7 @@ class WarpReport:
 
     target_ratio: float
     frames: int
-    #: Signed, so a shorter-femur warp is visibly a reduction in lean rather than
-    #: looking identical to a longer-femur one.
+    #: Signed: negative means less lean than the source.
     mean_back_shift_deg: float
     #: Largest absolute shift, for spotting a warp that has gone somewhere extreme.
     max_back_shift_deg: float
@@ -72,12 +47,7 @@ def required_back_angle(
     femur_to_torso_ratio: float, thigh_angle: float, shin_angle: float,
     tibia_to_femur_ratio: float,
 ) -> tuple[float, bool]:
-    """Back angle from vertical that puts the bar over the midfoot.
-
-    Returns the angle in degrees and whether the position was infeasible - that is,
-    whether the required sine exceeded 1, meaning no torso inclination can bring the bar
-    back over the midfoot for that build and that leg configuration.
-    """
+    """Back angle from vertical that puts the bar over the midfoot."""
     horizontal = (
         math.sin(math.radians(thigh_angle))
         - tibia_to_femur_ratio * math.sin(math.radians(shin_angle))
@@ -156,9 +126,7 @@ def warp_frames(
         far, far_clamped = _shift_side(frame.camera_far, delta)
         clamped += int(near_clamped or far_clamped)
 
-        # knee_flexion, ankle_dorsiflexion and the width ratio are untouched: the model
-        # rotates the torso only, and the width ratio is a frontal-plane measure that
-        # sagittal proportions do not affect.
+        # Only the torso rotates; leg angles and the width ratio are unchanged.
         warped.append(replace(frame, camera_near=near, camera_far=far))
 
     signed = shifts or [0.0]
@@ -182,11 +150,7 @@ def build_document(
     exercise: str,
     fps_target: float | None,
 ) -> dict:
-    """Assemble a reference file in the reference schema.
-
-    Frames are serialized through ``KinematicFrame.to_json_frame()``, the same call the
-    live path uses, so a generated file cannot drift from what the loader expects.
-    """
+    """Assemble a reference file in the reference schema."""
     metadata = {
         "exercise": exercise,
         "camera_angle": camera_angle,

@@ -1,15 +1,4 @@
-"""One-Euro filter for landmark smoothing.
-
-BlazePose jitters by a few millimetres even on a motionless subject. Harmless for a static
-pose, but hip height is differentiated to segment the rep and differentiation amplifies
-high-frequency noise, so smoothing belongs upstream of any analysis.
-
-One-Euro rather than a fixed low-pass because its cutoff adapts to speed: heavy smoothing
-during a held position, light during a fast ascent. A fixed filter would have to choose
-between jitter at the bottom of the squat and lag at the top.
-
-Casiez, Roussel and Vogel, CHI 2012.
-"""
+"""One-Euro filter for landmark smoothing (Casiez et al., CHI 2012)."""
 
 from __future__ import annotations
 
@@ -19,17 +8,7 @@ import numpy as np
 
 
 class OneEuroFilter:
-    """Adaptive low-pass filter over a fixed-shape numpy array.
-
-    Parameters
-    ----------
-    min_cutoff:
-        Cutoff frequency (Hz) at zero speed. Lower = smoother but laggier when still.
-    beta:
-        Speed coefficient. Higher = less lag during fast motion, more jitter.
-    d_cutoff:
-        Cutoff for the derivative estimate itself.
-    """
+    """Adaptive low-pass filter over a fixed-shape numpy array."""
 
     def __init__(
         self,
@@ -50,8 +29,9 @@ class OneEuroFilter:
         self._t_prev_s: float | None = None
 
     def reset(self) -> None:
-        """Forget history. Called when tracking is lost, so the filter does not drag
-        the skeleton from the old pose toward the new one across the gap."""
+        """Forget history. Called when tracking is lost, so the filter does not drag the
+        skeleton from the old pose toward the new one across the gap.
+        """
         self._x_prev = None
         self._dx_prev = np.zeros(self.shape, dtype=np.float32)
         self._t_prev_s = None
@@ -68,11 +48,9 @@ class OneEuroFilter:
 
         dt = timestamp_s - self._t_prev_s
         if dt <= 0:
-            # Duplicate or out-of-order timestamp: hold the previous estimate rather
-            # than dividing by zero when computing the derivative.
+            # Duplicate or out-of-order timestamp: hold the previous estimate.
             return self._x_prev.copy()
-        # Clamp so a long stall (window drag, USB hiccup) doesn't produce a huge dt that
-        # makes alpha ~1 and defeats the filter, nor a tiny dt that spikes the derivative.
+        # Clamp dt so stalls and near-duplicate stamps don't break the filter.
         dt = min(max(dt, 1e-3), 0.5)
 
         dx = (x - self._x_prev) / dt

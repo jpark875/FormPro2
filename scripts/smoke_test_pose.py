@@ -1,10 +1,6 @@
-"""Camera and pose ingestion diagnostic.
+"""Camera and pose ingestion check.
 
-Draws the tracked-joint wireframe and a telemetry readout, to confirm the ingestion stage
-works and that camera placement keeps all twelve squat joints visible. Not the application
-UI: that is app.py and server.py.
-
-    python scripts/smoke_test_pose.py [--config configs/squat.yaml] [--source 0]
+    python scripts/smoke_test_pose.py [--source 0]
 """
 
 from __future__ import annotations

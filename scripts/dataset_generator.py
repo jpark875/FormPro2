@@ -1,14 +1,6 @@
-"""Generate synthetic reference profiles across a range of builds.
+"""Generate synthetic reference profiles across builds from one optimal recording.
 
-Takes one verified perfect-form recording and re-expresses it as the same rep performed by
-lifters of different femur-to-torso ratios, widening the corpus so the analyzer
-interpolates rather than projects.
-
-    python scripts/dataset_generator.py data/reference/subject_1p00.json
-    python scripts/dataset_generator.py source.json --ratios 0.7 0.9 1.1 --out data/reference
-
-The biomechanical model lives in formpro/synthesis.py. Output is marked
-reference_optimal_synthetic: it encodes a modelling assumption, not an observed lifter.
+    python scripts/dataset_generator.py data/reference/subject.json [--ratios 0.7 0.9]
 """
 
 from __future__ import annotations
@@ -107,9 +99,7 @@ def main() -> int:
         )
         destination.write_text(json.dumps(document, indent=1), encoding="utf-8")
 
-        # Read it straight back through the loader. A generator that emits files the
-        # loader rejects is worse than no generator, and this catches it at write time
-        # rather than at the start of a training session.
+        # Re-validate through the loader before reporting success.
         try:
             load_sequence(destination, dataset_config)
         except DatasetError as exc:

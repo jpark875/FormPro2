@@ -1,19 +1,7 @@
-"""Real-time comparison against the reference corpus.
+"""Compares live frames against bands derived from the reference corpus.
 
-An inference engine over the corpus, holding no baseline thresholds and no fallback
-constants. Every bound is computed at runtime from reference frames labelled optimal_form,
-then adjusted to the live lifter's build. An empty corpus is a startup failure, since an
-analyzer that falls back to hardcoded numbers is indistinguishable from one that is
-working and passes every rep.
-
-Bounds are built by pooling optimal_form frames per subject build, grouping them by phase
-and taking a percentile band per feature. Error frames never contribute; folding them in
-would widen the band to admit the thing being detected. At evaluation time the lifter's
-ratio is bracketed against the corpus: between two profiles the bands blend by distance,
-outside it they project along the trend of the two nearest.
-
-ERROR_SIGNATURES carries no magnitudes. It records which error a deviation means, never
-how far is too far, so the bounds stay evidence while the cues stay specific.
+Bands come from optimal_form frames and are interpolated by femur_to_torso_ratio.
+There are no hardcoded thresholds; an empty corpus is an error.
 """
 
 from __future__ import annotations
@@ -45,11 +33,6 @@ class AnalyzerError(RuntimeError):
     """The analyzer cannot operate on the corpus it was given."""
 
 
-# ---------------------------------------------------------------------------
-# interpretation table (no magnitudes here, only meanings)
-# ---------------------------------------------------------------------------
-
-
 @dataclass(frozen=True)
 class ErrorSignature:
     feature: str
@@ -63,17 +46,13 @@ class ErrorSignature:
 
 
 ERROR_SIGNATURES: tuple[ErrorSignature, ...] = (
-    # Knees tracking inward relative to the hips. The ratio is the only frontal-plane
-    # feature, and it is meaningful throughout the loaded portion of the lift.
+    # Knees tracking inward relative to the hips.
     ErrorSignature(
         "global.knee_to_hip_width_ratio", -1,
         (Phase.ECCENTRIC, Phase.BOTTOM, Phase.CONCENTRIC),
         FormLabel.KNEE_VALGUS, "KNEE VALGUS DETECTED",
     ),
-    # Hips outrunning the shoulders. The schema carries no shoulder height, but it does
-    # not need to: if the hips rise faster than the shoulders the torso necessarily
-    # becomes more horizontal, so a back angle that is both above the corpus band and
-    # still opening during the ascent is exactly that failure.
+    # Hips outrunning the shoulders shows as a back angle still opening on the ascent.
     ErrorSignature(
         "camera_near.back_to_vertical", +1, (Phase.CONCENTRIC,),
         FormLabel.GOOD_MORNING, "HIPS RISING TOO FAST", requires_rising=True,
@@ -91,19 +70,12 @@ ERROR_SIGNATURES: tuple[ErrorSignature, ...] = (
         "camera_near.hip_flexion", +1, (Phase.BOTTOM,),
         FormLabel.HIGH_SQUAT, "HIP CREASE ABOVE KNEE",
     ),
-    # Heel lift reads as an unexpectedly large ankle angle: as the heel rises, the
-    # heel-to-toe axis tilts away from the shin, opening the measured angle, while normal
-    # dorsiflexion during a descent closes it.
+    # A rising heel opens the measured ankle angle.
     ErrorSignature(
         "camera_near.ankle_dorsiflexion", +1, (Phase.BOTTOM, Phase.CONCENTRIC),
         FormLabel.HEEL_LIFT, "HEELS LIFTING - WEIGHT FORWARD",
     ),
 )
-
-
-# ---------------------------------------------------------------------------
-# corpus-derived bounds
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -161,12 +133,7 @@ class BandSource:
 
 
 def build_profiles(corpus: ReferenceCorpus, config: AnalyzerConfig) -> list[ThresholdProfile]:
-    """One profile per distinct subject build in the corpus.
-
-    Only ``optimal_form`` frames contribute. Frames labelled with an error describe what
-    the lifter must not do, so folding them into the acceptable band would widen it to
-    admit the very thing being detected.
-    """
+    """One profile per distinct subject build in the corpus."""
     pooled: dict[float, list[KinematicFrame]] = {}
     for sequence in corpus:
         ratio = round(sequence.femur_to_torso_ratio, 4)
@@ -223,7 +190,8 @@ class ThresholdModel:
         return tuple(p.femur_to_torso_ratio for p in self.profiles)
 
     def resolve(self, femur_to_torso_ratio: float) -> tuple[ThresholdProfile, BandSource]:
-        """Bands for this build, by interpolation inside the corpus or projection outside."""
+        """Bands for this build, by interpolation inside the corpus or projection outside.
+        """
         if math.isnan(femur_to_torso_ratio):
             raise AnalyzerError("cannot resolve thresholds before calibration completes")
 
@@ -283,12 +251,7 @@ class ThresholdModel:
 def _blend_bands(
     lower: ThresholdProfile, upper: ThresholdProfile, t: float
 ) -> dict[tuple[Phase, str], FeatureBand]:
-    """Blend two profiles at position ``t``.
-
-    ``t`` inside [0, 1] interpolates; outside it the same expression extrapolates along
-    the line through the two profiles, which is what keeps an unusual build on real
-    corpus evidence rather than a fallback constant.
-    """
+    """Blend two profiles at position ``t``."""
     out: dict[tuple[Phase, str], FeatureBand] = {}
     for key, low_band in lower.bands.items():
         high_band = upper.bands.get(key)
@@ -311,23 +274,10 @@ def _blend_bands(
     return out
 
 
-# ---------------------------------------------------------------------------
-# dynamic time warping
-# ---------------------------------------------------------------------------
-
-
 def dtw_distance(
     a: np.ndarray, b: np.ndarray, weights: np.ndarray, band_ratio: float = 0.2
 ) -> float:
-    """Weighted DTW between two feature sequences, normalized by path length.
-
-    A Sakoe-Chiba band bounds how far the alignment may warp. Without it a slow live
-    descent could align against a fast reference ascent and report a small distance
-    between two quite different movements.
-
-    ``nan`` features are skipped per-pair rather than poisoning the whole cell, since the
-    camera-far side is legitimately unmeasured for stretches of a rep.
-    """
+    """Weighted DTW between two feature sequences, normalized by path length."""
     n, m = len(a), len(b)
     if n == 0 or m == 0:
         return math.inf
@@ -353,11 +303,6 @@ def dtw_distance(
     return math.inf if not np.isfinite(total) else float(total) / (n + m)
 
 
-# ---------------------------------------------------------------------------
-# results
-# ---------------------------------------------------------------------------
-
-
 @dataclass(frozen=True)
 class Finding:
     label: FormLabel
@@ -366,8 +311,7 @@ class Finding:
     phase: Phase
     observed: float
     band: FeatureBand
-    #: Deviation past the band, expressed in degree-equivalent units so a valgus finding
-    #: and a back-angle finding can be ranked against each other.
+    #: Deviation past the band in degree-equivalent units, for ranking findings.
     severity: float
 
     def detail(self) -> str:
@@ -408,11 +352,6 @@ class _Pending:
     finding: Finding | None = None
 
 
-# ---------------------------------------------------------------------------
-# analyzer
-# ---------------------------------------------------------------------------
-
-
 class FormAnalyzer:
     """Compares live normalized frames against corpus-derived bounds."""
 
@@ -446,8 +385,6 @@ class FormAnalyzer:
         self._segment_label: FormLabel | None = None
         self._segment_confidence = 0.0
 
-    # -- lifecycle -------------------------------------------------------------
-
     def reset(self) -> None:
         self._pending.clear()
         self._lean.reset()
@@ -459,8 +396,6 @@ class FormAnalyzer:
     @property
     def band_source(self) -> BandSource | None:
         return self._source
-
-    # -- main entry point ------------------------------------------------------
 
     def update(self, frame: KinematicFrame, femur_to_torso_ratio: float) -> AnalysisResult:
         """Evaluate one live frame. ``frame.phase`` must already be set."""
@@ -479,8 +414,6 @@ class FormAnalyzer:
             segment_label=self._segment_label,
             segment_confidence=self._segment_confidence,
         )
-
-    # -- bounds ----------------------------------------------------------------
 
     def _ensure_profile(self, ratio: float) -> None:
         if math.isnan(ratio):
@@ -513,8 +446,7 @@ class FormAnalyzer:
 
             value = values[signature.feature]
             if math.isnan(value):
-                # Occluded joint: withhold the finding rather than infer one from a
-                # coordinate the model guessed.
+                # Occluded joint: withhold rather than guess.
                 continue
 
             band = self._profile.band(phase, signature.feature)
@@ -562,8 +494,6 @@ class FormAnalyzer:
         active = [s.finding for s in self._pending.values() if s.active and s.finding]
         return tuple(sorted(active, key=lambda f: f.severity, reverse=True))
 
-    # -- sequence classification -----------------------------------------------
-
     def _accumulate_segment(self, frame: KinematicFrame, phase: Phase) -> None:
         if phase is not self._segment_phase:
             if self._segment_phase in (Phase.ECCENTRIC, Phase.CONCENTRIC) and self._segment:
@@ -574,12 +504,7 @@ class FormAnalyzer:
             self._segment.append(frame)
 
     def _classify(self, phase: Phase, segment: Sequence[KinematicFrame]) -> None:
-        """Nearest-label DTW over reference segments of the same phase.
-
-        A second opinion alongside the band checks, and the one that can catch a
-        whole-shape problem that no single frame violates: a rep where every angle stays
-        inside its band but the coordination between them is wrong.
-        """
+        """Nearest-label DTW over reference segments of the same phase."""
         if len(segment) < 4:
             return
         live = np.vstack([to_feature_vector(f) for f in segment])

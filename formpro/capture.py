@@ -1,20 +1,6 @@
-"""Threaded camera capture with drop-old buffering.
+"""Threaded camera capture with a one-slot, drop-old buffer.
 
-A synchronous cap.read() loop drains OpenCV's internal FIFO in order, so when inference
-is slower than the frame interval the analysed frame falls progressively behind the
-lifter. Feedback delivered several hundred milliseconds late is worse than none, because
-the position being critiqued is already over.
-
-The grab loop therefore runs in its own thread with a one-slot buffer: a new frame
-overwrites an unconsumed one and increments a drop counter. Latency stays bounded at one
-frame interval, and a machine too slow for the model reports that through the drop count
-instead of quietly lagging.
-
-File sources are paced to their recorded frame rate. A camera is rate-limited by its
-sensor; a file is not, and would otherwise be raced through and discarded.
-
-Frames are never mirrored here. Flipping before inference would swap the lifter's
-anatomical left and right and invert per-side findings such as knee valgus.
+File sources are paced to their frame rate. Frames are never mirrored here.
 """
 
 from __future__ import annotations
@@ -46,14 +32,7 @@ class CameraError(RuntimeError):
 
 
 class CameraStream:
-    """Background reader over a webcam (or a video file, for replay).
-
-    Usage::
-
-        with CameraStream(cfg) as cam:
-            for frame in cam.frames():
-                ...
-    """
+    """Background reader over a webcam (or a video file, for replay)."""
 
     def __init__(self, config: CameraConfig) -> None:
         self.config = config
@@ -66,8 +45,6 @@ class CameraStream:
         self._start_ns = 0
         self._grabbed = 0
         self._dropped = 0
-
-    # -- lifecycle -------------------------------------------------------------
 
     def start(self) -> CameraStream:
         if self._thread is not None:
@@ -122,8 +99,6 @@ class CameraStream:
     def __exit__(self, *exc_info: object) -> None:
         self.stop()
 
-    # -- reading ---------------------------------------------------------------
-
     def read(self, timeout: float | None = None) -> Frame | None:
         """Return the most recent frame, or ``None`` if none arrived within the timeout."""
         if self._error is not None:
@@ -147,8 +122,6 @@ class CameraStream:
                 continue
             yield frame
 
-    # -- stats -----------------------------------------------------------------
-
     @property
     def grabbed(self) -> int:
         """Frames pulled off the sensor."""
@@ -156,21 +129,11 @@ class CameraStream:
 
     @property
     def dropped(self) -> int:
-        """Frames discarded because the consumer was still busy.
-
-        A steadily rising count means inference is slower than the capture rate, which is
-        expected on the heavy model: the pipeline stays live rather than falling behind.
-        """
+        """Frames discarded because the consumer was still busy."""
         return self._dropped
 
-    # -- internals -------------------------------------------------------------
-
     def _playback_interval(self, cap: cv2.VideoCapture) -> float:
-        """Seconds to wait between frames, or 0 to read as fast as the source allows.
-
-        Only file sources are paced. A camera already delivers at its own rate, and
-        adding a sleep there would fight the driver.
-        """
+        """Seconds to wait between frames, or 0 to read as fast as the source allows."""
         if isinstance(self.config.source, int) or not self.config.pace_file_playback:
             return 0.0
         fps = cap.get(cv2.CAP_PROP_FPS)
@@ -210,8 +173,7 @@ class CameraStream:
                         # Event.wait, not sleep, so stop() is still responsive.
                         self._stop.wait(delay)
                     else:
-                        # Decoding fell behind real time; resync rather than
-                        # accumulating an ever-growing debt.
+                        # Fell behind real time: resync instead of accumulating debt.
                         due = time.monotonic()
         except BaseException as exc:  # surfaced to the consumer via read()
             self._error = exc

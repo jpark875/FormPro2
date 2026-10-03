@@ -1,16 +1,4 @@
-"""MediaPipe BlazePose backend.
-
-3D world landmarks are required rather than merely convenient: a lateral 2D view cannot
-see knee valgus, and metric hip-centred coordinates are what let segment lengths survive
-the lifter moving toward or away from the camera.
-
-Sits behind the PoseBackend Protocol, so another model can replace it provided it emits
-the same PoseFrame contract.
-
-Runs in VIDEO mode rather than LIVE_STREAM. The async callback would decouple result from
-frame and force timestamp re-association, and capture already bounds latency, so every
-PoseFrame stays unambiguously paired with the image it came from.
-"""
+"""MediaPipe BlazePose backend (VIDEO mode, 3D world landmarks)."""
 
 from __future__ import annotations
 
@@ -50,8 +38,7 @@ class BlazePoseEstimator:
     """MediaPipe ``PoseLandmarker`` wrapped to emit ``PoseFrame`` objects."""
 
     def __init__(self, config: PoseConfig, model_path: Path | None = None) -> None:
-        # Imported lazily so that schema/kinematics tests do not pay MediaPipe's
-        # multi-second import cost or require the native library at all.
+        # Lazy import keeps MediaPipe out of tests that don't need it.
         from mediapipe import Image, ImageFormat
         from mediapipe.tasks.python import BaseOptions, vision
 
@@ -95,14 +82,11 @@ class BlazePoseEstimator:
         self._last_timestamp_ms = -1
         self._closed = False
 
-    # -- PoseBackend -----------------------------------------------------------
-
     def estimate(self, frame: Frame) -> PoseFrame | None:
         if self._closed:
             raise RuntimeError("estimator is closed")
 
-        # detect_for_video requires strictly increasing timestamps; two frames can share
-        # a millisecond at high capture rates, so nudge rather than let MediaPipe raise.
+        # detect_for_video requires strictly increasing timestamps.
         timestamp_ms = max(frame.timestamp_ms, self._last_timestamp_ms + 1)
         self._last_timestamp_ms = timestamp_ms
 
@@ -111,8 +95,7 @@ class BlazePoseEstimator:
         result = self._landmarker.detect_for_video(mp_image, timestamp_ms)
 
         if not result.pose_landmarks or not result.pose_world_landmarks:
-            # Subject left the frame: clear filter history so the skeleton does not
-            # interpolate across the gap when they return.
+            # Subject left the frame: don't smooth across the gap.
             if self._filter is not None:
                 self._filter.reset()
             return None
@@ -125,8 +108,7 @@ class BlazePoseEstimator:
         )
 
         if self._filter is not None:
-            # Smooth world space only. Image space is for drawing, where the raw
-            # landmarks track the video more faithfully.
+            # Smooth world space only; image space is for drawing.
             smoothed = self._filter(pose.world_xyz, frame.timestamp_ms / 1000.0)
             pose = pose.with_world(smoothed.astype(np.float32, copy=False))
 

@@ -1,22 +1,7 @@
-"""Biomechanical normalization: metric 3D landmarks to the reference angle set.
+"""Converts 3D landmarks into the reference angle set.
 
-Live and reference frames become the same type, so they compare without an adapter. Three
-normalizations make lifters of different sizes comparable: angles rather than positions,
-ratios rather than distances (knee separation over hip width, hip height over leg length),
-and femur_to_torso_ratio carried as context rather than applied as a correction.
-
-Z is handled differently for the two things it is used for. Angles attenuate it by
-z_weight, because full 3D inherits BlazePose's depth noise while pure image-plane
-projection under-reads flexion, the sagittal plane sitting at 45 degrees to the image
-plane. Segment lengths use full 3D, since attenuating Z would shorten limbs pointing at
-the camera, which is the foreshortening the depth axis exists to correct.
-
-Attenuation leaves a systematic bias in the angles. It cancels only if the reference
-corpus came from this engine at this camera angle; a corpus computed with true 3D angles
-would sit at a constant offset and every threshold would be wrong by that amount.
-
-knee_to_hip_width_ratio avoids Z entirely by using X separation only: the knee and hip
-axes foreshorten by the same cosine, so the division cancels it.
+Angles attenuate Z by z_weight; segment lengths use full 3D. The reference corpus must
+come from this engine at the same camera angle so the attenuation bias cancels.
 """
 
 from __future__ import annotations
@@ -37,9 +22,7 @@ log = logging.getLogger(__name__)
 _EPS = 1e-6
 _UP = np.array([0.0, 1.0, 0.0], dtype=np.float64)
 
-#: Feature layout shared by the live path and the dataset loader. Order is part of the
-#: contract: the analyzer compares vectors positionally, so changing it silently
-#: invalidates every cached distance.
+#: Feature layout shared by live and reference data. Order is part of the contract.
 FEATURE_ORDER: tuple[str, ...] = (
     "camera_near.hip_flexion",
     "camera_near.knee_flexion",
@@ -57,24 +40,9 @@ SIDE_ANGLE_FIELDS: tuple[str, ...] = (
 )
 
 
-# ---------------------------------------------------------------------------
-# value objects
-# ---------------------------------------------------------------------------
-
-
 @dataclass(frozen=True)
 class SideAngles:
-    """The four sagittal measures for one side, in degrees.
-
-    Included angles between segments, where 180 means fully extended. This is not the
-    clinical convention where a straight knee is 0 degrees of flexion. Standing reads
-    roughly hip 180, knee 180, ankle 90, back_to_vertical 0; all four move away from
-    those values as the lifter descends.
-
-    ``nan`` means the joint was not observed with enough confidence, which is normal for
-    the camera-far side at a 45-degree view. It is deliberately not zero: zero is a
-    legal angle and would be silently analysed as a real measurement.
-    """
+    """The four sagittal measures for one side, in degrees."""
 
     hip_flexion: float
     knee_flexion: float
@@ -136,7 +104,8 @@ class BodyProportions:
 @dataclass(frozen=True)
 class KinematicFrame:
     """One normalized frame, produced by this engine for live data and by
-    ``dataset_loader`` for reference data. Identical type on both paths."""
+    ``dataset_loader`` for reference data. Identical type on both paths.
+    """
 
     frame_id: int
     timestamp_ms: int
@@ -166,20 +135,11 @@ class KinematicFrame:
 
     @property
     def near_complete(self) -> bool:
-        """Whether the well-observed side is fully measured.
-
-        Required before emitting a sagittal finding. The camera-far side being
-        incomplete is expected and must not invalidate a frame.
-        """
+        """Whether the well-observed side is fully measured."""
         return self.camera_near.complete
 
     def with_phase(self, phase: Phase) -> KinematicFrame:
         return replace(self, phase=phase)
-
-
-# ---------------------------------------------------------------------------
-# geometry helpers
-# ---------------------------------------------------------------------------
 
 
 def angle_between(v1: np.ndarray, v2: np.ndarray) -> float:
@@ -203,20 +163,8 @@ def _length_m(pose: PoseFrame, a: int, b: int) -> float:
     return float(np.linalg.norm(pose.world_xyz[b] - pose.world_xyz[a]))
 
 
-# ---------------------------------------------------------------------------
-# camera-near side resolution
-# ---------------------------------------------------------------------------
-
-
 class SideResolver:
-    """Decides which anatomical side faces the camera, with hysteresis.
-
-    World Z is positive toward the camera, so the nearer side has the greater mean depth
-    across hip, knee and ankle. The raw comparison is noisy and would flicker near
-    parity, and a side that flips mid-rep would splice two different limbs into one time
-    series. An EMA plus a dead band means the decision only changes on sustained
-    evidence.
-    """
+    """Decides which anatomical side faces the camera, with hysteresis."""
 
     def __init__(self, config: KinematicsConfig) -> None:
         self._alpha = config.side_ema_alpha
@@ -255,23 +203,8 @@ class SideResolver:
         return self._side
 
 
-# ---------------------------------------------------------------------------
-# proportion calibration
-# ---------------------------------------------------------------------------
-
-
 class ProportionCalibrator:
-    """Estimates the lifter's segment geometry over a rolling window.
-
-    Segment lengths are rigid in principle, so any pose would do, but single-frame
-    estimates carry the full depth error. A median over a few seconds is far steadier,
-    and using a rolling window rather than a one-shot calibration means the estimate
-    keeps improving as the lifter moves through poses with different foreshortening.
-
-    Proportions are read once per session and then held by the engine, rather than
-    recomputed per frame, so the tolerance band cannot wobble mid-rep from nothing but
-    measurement noise.
-    """
+    """Estimates the lifter's segment geometry over a rolling window."""
 
     def __init__(self, config: KinematicsConfig) -> None:
         self._window = config.calibration_window_frames
@@ -326,11 +259,6 @@ class ProportionCalibrator:
         )
 
 
-# ---------------------------------------------------------------------------
-# engine
-# ---------------------------------------------------------------------------
-
-
 class KinematicsEngine:
     """Converts ``PoseFrame`` into ``KinematicFrame``."""
 
@@ -356,12 +284,7 @@ class KinematicsEngine:
         return 1.0 if self._proportions else self._calibrator.progress
 
     def update(self, pose: PoseFrame) -> KinematicFrame | None:
-        """Normalize one pose frame, or return ``None`` if the core joints are missing.
-
-        Core means both hips and both knees: without them there is neither a valgus
-        measurement nor a hip height, and nothing downstream can proceed. Everything
-        else degrades to ``nan`` on the affected angle rather than dropping the frame.
-        """
+        """Normalize one pose frame, or return ``None`` if the core joints are missing."""
         core = (
             SIDE_LANDMARKS[Side.LEFT]["hip"], SIDE_LANDMARKS[Side.RIGHT]["hip"],
             SIDE_LANDMARKS[Side.LEFT]["knee"], SIDE_LANDMARKS[Side.RIGHT]["knee"],
@@ -386,8 +309,6 @@ class KinematicsEngine:
             near_side=near,
             hip_height_norm=self._hip_height_norm(pose),
         )
-
-    # -- measurements ----------------------------------------------------------
 
     def _side_angles(self, pose: PoseFrame, side: Side) -> SideAngles:
         joints = SIDE_LANDMARKS[side]
@@ -417,12 +338,7 @@ class KinematicsEngine:
         return SideAngles(hip, knee, ankle, back)
 
     def _width_ratio(self, pose: PoseFrame) -> float:
-        """Inter-knee X separation over inter-hip X separation.
-
-        X only, deliberately. Both axes are foreshortened by the same cosine at any
-        given camera yaw, so the division cancels it and the ratio holds without relying
-        on Z. Falling valgus drives this below 1.
-        """
+        """Inter-knee X separation over inter-hip X separation."""
         left, right = SIDE_LANDMARKS[Side.LEFT], SIDE_LANDMARKS[Side.RIGHT]
         knee_sep = abs(float(pose.world(left["knee"])[0] - pose.world(right["knee"])[0]))
         hip_sep = abs(float(pose.world(left["hip"])[0] - pose.world(right["hip"])[0]))
@@ -431,11 +347,7 @@ class KinematicsEngine:
         return knee_sep / hip_sep
 
     def _hip_height_norm(self, pose: PoseFrame) -> float:
-        """Hip height above the ankles as a fraction of the lifter's own leg length.
-
-        Roughly 1.0 standing and around 0.5 at depth, for every lifter regardless of
-        height, which is what lets one velocity threshold serve all body sizes.
-        """
+        """Hip height above the ankles as a fraction of the lifter's own leg length."""
         proportions = self._proportions
         if proportions is None or proportions.leg_length_m < _EPS:
             return math.nan
@@ -443,11 +355,6 @@ class KinematicsEngine:
         hip_y = 0.5 * (pose.world(left["hip"])[1] + pose.world(right["hip"])[1])
         ankle_y = 0.5 * (pose.world(left["ankle"])[1] + pose.world(right["ankle"])[1])
         return float(hip_y - ankle_y) / proportions.leg_length_m
-
-
-# ---------------------------------------------------------------------------
-# feature vectors and the proportion-driven tolerance band
-# ---------------------------------------------------------------------------
 
 
 def to_feature_vector(frame: KinematicFrame) -> np.ndarray:
@@ -464,18 +371,7 @@ def to_feature_vector(frame: KinematicFrame) -> np.ndarray:
 
 
 def feature_weights(config: KinematicsConfig) -> dict[str, float]:
-    """Per-feature multipliers for the distance metric, keyed by feature name.
-
-    Two jobs. It down-weights the camera-far side, which at 45 degrees is partially
-    occluded and contributes more noise than signal to sagittal measures. And it puts
-    ``knee_to_hip_width_ratio`` on the same scale as the degree-valued angles.
-
-    Without that rescaling the metric would effectively discard the only frontal-plane
-    feature available: a full valgus collapse moves the ratio by perhaps 0.2, against
-    angle deviations of tens of degrees, so the frontal signal would vanish inside the
-    sagittal noise. The scale comes from a stated biomechanical equivalence in config
-    rather than a tuned constant, so the assumption can be argued with directly.
-    """
+    """Per-feature multipliers for the distance metric, keyed by feature name."""
     far = config.camera_far_weight
     scale = config.width_ratio_scale
     return {

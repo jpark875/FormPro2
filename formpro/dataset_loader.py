@@ -1,16 +1,4 @@
-"""Reference dataset ingestion.
-
-Loads labelled reference sequences into KinematicFrame, the same type the live path
-produces, so comparison needs no translation layer where a units mismatch or a field
-rename could hide.
-
-Validation raises rather than warns. A silently skipped file breaks nothing visibly, it
-just removes an anchor point from the corpus, and the interpolated band then narrows
-around whichever builds happened to survive.
-
-ReferenceCorpus indexes sequences by femur_to_torso_ratio and exposes bracketing lookup,
-so a lifter is placed between the two nearest builds rather than snapped to the closest.
-"""
+"""Loads and validates reference sequences into a corpus indexed by build."""
 
 from __future__ import annotations
 
@@ -98,12 +86,7 @@ class ReferenceSequence:
         return int(self.timestamps_ms[-1] - self.timestamps_ms[0])
 
     def slice_phase(self, phase: Phase) -> np.ndarray:
-        """Indices of frames in the given phase.
-
-        The analyzer aligns like against like, a live concentric against reference
-        concentric frames, rather than warping a whole rep against a whole rep, which
-        would let a slow descent absorb a fast, broken ascent.
-        """
+        """Indices of frames in the given phase."""
         return np.array([i for i, f in enumerate(self.frames) if f.phase is phase], dtype=int)
 
     def slice_label(self, label: FormLabel) -> np.ndarray:
@@ -112,11 +95,7 @@ class ReferenceSequence:
         )
 
     def label_transitions(self) -> tuple[tuple[int, FormLabel], ...]:
-        """Frame indices where the label changes, with the label it changes to.
-
-        A good-morning file is expected to read ``optimal_form`` through the eccentric
-        and switch at the concentric; this exposes that boundary directly.
-        """
+        """Frame indices where the label changes, with the label it changes to."""
         out: list[tuple[int, FormLabel]] = []
         previous: FormLabel | None = None
         for i, frame in enumerate(self.frames):
@@ -157,12 +136,7 @@ class ReferenceCorpus:
     def bracketing(
         self, femur_to_torso_ratio: float
     ) -> tuple[ReferenceSequence | None, ReferenceSequence | None]:
-        """The nearest reference below and above a live lifter's ratio.
-
-        Either side is ``None`` when the lifter falls outside the corpus. A one-sided
-        bracket is extrapolation and must be treated as such, rather than trusting a
-        band anchored on one side only.
-        """
+        """The nearest reference below and above a live lifter's ratio."""
         if not self.sequences or math.isnan(femur_to_torso_ratio):
             return None, None
         ordered = sorted(self.sequences, key=lambda s: s.femur_to_torso_ratio)
@@ -182,11 +156,6 @@ class ReferenceCorpus:
             f"femur_to_torso_ratio {low:.2f}-{high:.2f}, "
             f"labels: {', '.join(labels)}"
         )
-
-
-# ---------------------------------------------------------------------------
-# parsing
-# ---------------------------------------------------------------------------
 
 
 def load_sequence(path: Path | str, config: DatasetConfig) -> ReferenceSequence:
@@ -225,11 +194,7 @@ def load_corpus(
     config: DatasetConfig | None = None,
     pattern: str = "*.json",
 ) -> ReferenceCorpus:
-    """Load every reference file under ``root``.
-
-    An empty directory raises. A reference-driven analyzer with no references would
-    otherwise start up looking healthy and pass every rep.
-    """
+    """Load every reference file under ``root``."""
     config = config or DatasetConfig()
     root = Path(root) if root is not None else config.resolved_root()
     if not root.is_dir():
@@ -272,8 +237,6 @@ def _parse_metadata(path: Path, raw: Any, config: DatasetConfig) -> ReferenceMet
             path.name, angle, config.accepted_camera_angles[0],
         )
     elif angle not in config.accepted_camera_angles:
-        # Comparing against a differently-framed recording is worse than having no
-        # reference at all, because the mismatch presents as consistent form error.
         raise DatasetError(
             path,
             f"camera_angle is {angle!r}, expected one of "

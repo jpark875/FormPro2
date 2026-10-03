@@ -5,9 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FormPro2 / Barbell Back Squat</title>
 <style>
-/* Instrument panel. No animation, transition, hover state, gradient, shadow or rounded
-   corner anywhere in this file. The only saturated colour is --risk, reserved for an
-   active form fault, so that when anything red appears it is the only thing that is. */
 :root {
   --bg: #000000;
   --panel: #0a0a0a;
@@ -31,9 +28,6 @@ html, body {
   font-size: 13px;
   line-height: 1.3;
   font-variant-numeric: tabular-nums;
-  /* Grayscale rather than subpixel antialiasing: on a black background subpixel
-     rendering throws coloured fringes on every glyph edge. Honoured on macOS and
-     Firefox; Chromium on Windows ignores it, so a little fringing remains there. */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -49,8 +43,6 @@ body {
   gap: 1px;
   background: var(--rule);
 }
-
-/* ---------- header ---------- */
 
 #head {
   grid-area: head;
@@ -88,8 +80,6 @@ button {
   cursor: pointer;
 }
 
-/* ---------- video ---------- */
-
 #feed {
   grid-area: feed;
   background: var(--bg);
@@ -109,7 +99,6 @@ button {
 }
 #stage img { max-width: 100%; max-height: 100%; display: block; }
 
-/* The verdict band. Monochrome while clear; solid red the instant a fault is live. */
 #verdict {
   border-top: 1px solid var(--rule);
   padding: 12px 14px;
@@ -129,8 +118,6 @@ button {
 }
 #verdict.risk { background: var(--risk); color: #ffffff; }
 #verdict.risk .sub { color: #ffffff; }
-
-/* ---------- side panel ---------- */
 
 #side {
   grid-area: side;
@@ -170,7 +157,6 @@ tr:last-child th, tr:last-child td { border-bottom: 0; }
 .null { color: var(--dim); }
 .risk { color: var(--risk); }
 
-/* Risk flags read as a list, not a table: the message is the content. */
 #flags { padding: 0; }
 #flags .clear { padding: 10px 12px; color: var(--muted); letter-spacing: 0.04em; }
 #flags .flag {
@@ -186,8 +172,6 @@ tr:last-child th, tr:last-child td { border-bottom: 0; }
   letter-spacing: 0.03em;
 }
 #flags .flag .obs { color: var(--muted); font-size: 11px; margin-top: 2px; }
-
-/* ---------- log ---------- */
 
 #logs {
   grid-area: logs;
@@ -327,7 +311,6 @@ tr:last-child th, tr:last-child td { border-bottom: 0; }
     var rows = ensureLogTable();
     for (var i = entries.length - 1; i >= 0; i--) {
       var e = entries[i];
-      // The server filters by `since`, but a re-send must not duplicate a row.
       if (e.seq <= lastLogSeq) { continue; }
       var tr = document.createElement("tr");
       var t = document.createElement("td");
@@ -410,8 +393,6 @@ tr:last-child th, tr:last-child td { border-bottom: 0; }
   }
 
   function render(d) {
-    // System states (link, tracking) are never coloured. Red is reserved for form
-    // faults alone, so its appearance always means the same thing.
     put("v-link", d.connected ? "UP" : "DOWN");
     if (d.corpus) {
       el("v-corpus").textContent = d.corpus.profiles + " / "

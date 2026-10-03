@@ -1,8 +1,4 @@
-"""Web transport and telemetry.
-
-The pipeline is faked. What matters here is that one camera feeds many viewers, that
-telemetry serialises cleanly, and that the server refuses to run without a corpus.
-"""
+"""Web transport and telemetry tests."""
 
 from __future__ import annotations
 
@@ -32,8 +28,7 @@ def worker(tmp_path):
     corpus = load_corpus(tmp_path, DatasetConfig())
     analyzer = FormAnalyzer(corpus, AnalyzerConfig(), KinematicsConfig())
     made = PipelineWorker(AppConfig(), corpus, analyzer)
-    # The pipeline thread is never started here, so no new frames arrive; keep the
-    # idle bound short so the stream test closes quickly instead of waiting 10s.
+    # No pipeline thread runs here, so keep the stream idle bound short.
     made.stream_idle_timeout_s = 1.0
     yield made
     made.stop()
@@ -43,9 +38,6 @@ def worker(tmp_path):
 def client(worker):
     with TestClient(create_app(worker)) as made:
         yield made
-
-
-# -- publishing ----------------------------------------------------------------
 
 
 def test_placeholder_frame_exists_before_the_camera_opens(worker):
@@ -87,9 +79,6 @@ def test_many_viewers_share_one_frame(worker):
 
     assert all(r is not None for r in results)
     assert len({r[0] for r in results}) == 1
-
-
-# -- endpoints -----------------------------------------------------------------
 
 
 def test_index_serves_the_template(client):
@@ -150,9 +139,6 @@ def test_stalled_pipeline_closes_the_stream_instead_of_spinning(worker):
 def test_stopping_the_worker_ends_open_streams(worker):
     worker.stop()
     assert list(server_module.mjpeg_stream(worker)) == []
-
-
-# -- event latching ------------------------------------------------------------
 
 
 class _Result:
@@ -220,9 +206,6 @@ def test_reset_clears_latched_state(worker):
     worker._log_findings(_Result([finding]))
     entries = [e for e in worker.snapshot()["log"] if "VALGUS" in e["text"]]
     assert len(entries) == 2, "post-reset recurrence was swallowed"
-
-
-# -- startup contract ----------------------------------------------------------
 
 
 def test_server_refuses_to_start_without_a_corpus(tmp_path, monkeypatch, capsys):

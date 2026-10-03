@@ -1,8 +1,4 @@
-"""Kinematics: geometry, side resolution, calibration and rep segmentation.
-
-Poses are synthesised directly in world space (Y-up, metres, hip-origin), so the maths is
-checked against known geometry rather than against whatever the model happens to emit.
-"""
+"""Kinematics and rep segmentation tests on synthetic poses."""
 
 from __future__ import annotations
 
@@ -33,9 +29,6 @@ def engine(**overrides) -> KinematicsEngine:
     return KinematicsEngine(KinematicsConfig(**overrides), min_visibility=0.5)
 
 
-# -- geometry ------------------------------------------------------------------
-
-
 def test_angle_between_basics():
     assert angle_between(np.array([0, 1, 0]), np.array([0, 1, 0])) == pytest.approx(0)
     assert angle_between(np.array([0, 1, 0]), np.array([1, 0, 0])) == pytest.approx(90)
@@ -59,9 +52,7 @@ def test_standing_pose_produces_extended_angles():
 
 def test_descending_decreases_flexion_and_increases_back_angle():
     eng = engine(calibration_min_frames=1)
-    # Bottom position: knees travel forward over the toes (+z is the facing
-    # direction, per the heel/toe geometry), hips drop and shift back, torso leans
-    # forward to keep the bar over midfoot.
+    # Bottom position: knees forward, hips back, torso leaning forward.
     bottom = eng.update(
         make_pose(
             joints={
@@ -90,11 +81,7 @@ def test_valgus_drives_width_ratio_below_one():
 
 
 def test_width_ratio_is_invariant_to_camera_yaw():
-    """The ratio's whole purpose: both axes foreshorten together, so it cancels.
-
-    Rotating the subject about the vertical axis simulates a different camera yaw. The
-    absolute knee separation in X changes; the ratio must not.
-    """
+    """The ratio's whole purpose: both axes foreshorten together, so it cancels."""
     eng = engine(calibration_min_frames=1)
     straight = eng.update(make_pose(knee_x=0.07)).global_metrics.knee_to_hip_width_ratio
 
@@ -127,9 +114,6 @@ def test_missing_core_joints_drops_the_frame():
     assert engine().update(make_pose(hidden=(LM.LEFT_KNEE, LM.RIGHT_KNEE))) is None
 
 
-# -- side resolution -----------------------------------------------------------
-
-
 def test_near_side_is_the_one_closer_to_camera():
     """World Z is positive toward the camera."""
     eng = engine(calibration_min_frames=1)
@@ -160,9 +144,6 @@ def test_near_side_switches_on_sustained_change():
     for i in range(31, 80):
         frame = eng.update(make_pose(index=i, right_dz=0.20))
     assert frame.near_side is Side.RIGHT
-
-
-# -- proportions ---------------------------------------------------------------
 
 
 def test_proportions_match_the_synthesised_geometry():
@@ -219,9 +200,6 @@ def test_hip_height_norm_is_body_size_invariant():
     assert depth_for(0.8) == pytest.approx(depth_for(1.3), abs=1e-3)
 
 
-# -- tolerance band and features ----------------------------------------------
-
-
 def test_feature_vector_matches_declared_order():
     frame = KinematicFrame(
         frame_id=1, timestamp_ms=0,
@@ -264,9 +242,6 @@ def test_width_ratio_deviation_is_comparable_to_an_angle_deviation():
     assert valgus == pytest.approx(angle)
 
 
-# -- velocity ------------------------------------------------------------------
-
-
 def test_velocity_tracker_measures_per_second_not_per_frame():
     tracker = VelocityTracker(window_ms=200, max_gap_ms=250)
     slope = math.nan
@@ -296,9 +271,6 @@ def test_velocity_resets_across_a_long_gap():
     for i in range(6):
         tracker.update(i * 33, 1.0)
     assert math.isnan(tracker.update(5_000, 0.5)), "fitted a velocity across a dropout"
-
-
-# -- phase segmentation --------------------------------------------------------
 
 
 def squat_trajectory(fps: int = 30) -> list[tuple[int, float]]:

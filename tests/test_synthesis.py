@@ -1,8 +1,4 @@
-"""The build-warping model.
-
-Lean must scale with femur-to-torso ratio, and warping must preserve everything the model
-does not speak to.
-"""
+"""Build-warping model tests."""
 
 from __future__ import annotations
 
@@ -32,9 +28,6 @@ def frame(hip=75.0, knee=78.0, ankle=66.0, back=34.0, ratio=1.02, i=0):
         global_metrics=GlobalMetrics(ratio),
         phase=Phase.BOTTOM, form_label=FormLabel.OPTIMAL,
     )
-
-
-# -- angle conversions ---------------------------------------------------------
 
 
 def test_standing_maps_to_vertical_segments():
@@ -72,9 +65,6 @@ def test_infeasible_position_is_reported_not_silently_clamped():
     angle, infeasible = required_back_angle(3.0, 89.0, 0.0, K)
     assert infeasible
     assert angle == pytest.approx(90.0)
-
-
-# -- warping -------------------------------------------------------------------
 
 
 def test_warping_to_the_same_ratio_is_a_no_op():
@@ -173,9 +163,6 @@ def test_nan_angles_survive_without_becoming_numbers():
 def test_rejects_nonsense_ratios():
     with pytest.raises(ValueError):
         warp_frames((frame(),), 0.0, 1.0, K)
-
-
-# -- document assembly ---------------------------------------------------------
 
 
 def test_document_records_its_synthetic_provenance():

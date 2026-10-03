@@ -1,17 +1,6 @@
 """Web front end: MJPEG video and a JSON telemetry feed.
 
     python server.py [--host 0.0.0.0] [--port 8000] [--reference data/reference]
-
-One camera and one pipeline serve several viewers, so the pipeline runs in a worker thread
-and publishes the latest annotated frame while handlers only read it. Per-request
-inference would mean two browser tabs competing for one camera, and a page refresh
-restarting calibration mid-set.
-
-The publish slot holds one frame, the same drop-old policy the capture stage uses, so a
-viewer on a slow link falls behind by skipping rather than by accumulating stale frames.
-
-The stream carries the skeleton only. Telemetry lives in the HTML panel, where it is
-selectable and costs no video bandwidth to redraw text that has not changed.
 """
 
 from __future__ import annotations
@@ -98,8 +87,6 @@ class PipelineWorker(threading.Thread):
         self._publish(_placeholder("starting camera"))
         self._emit("info", "server started")
 
-    # -- publishing ------------------------------------------------------------
-
     def _publish(self, canvas: np.ndarray) -> None:
         ok, buffer = cv2.imencode(
             ".jpg", canvas, [int(cv2.IMWRITE_JPEG_QUALITY), self.jpeg_quality]
@@ -162,8 +149,6 @@ class PipelineWorker(threading.Thread):
     @property
     def stopped(self) -> bool:
         return self._stop.is_set()
-
-    # -- main loop -------------------------------------------------------------
 
     def run(self) -> None:
         try:
@@ -319,15 +304,7 @@ class PipelineWorker(threading.Thread):
 
 
 def mjpeg_stream(worker: PipelineWorker) -> Iterator[bytes]:
-    """Yield multipart JPEG parts until the pipeline stalls or the client leaves.
-
-    The idle bound is load-bearing rather than defensive. A generator that loops without
-    ever yielding cannot receive ``GeneratorExit``, so if the pipeline stops producing
-    frames, every disconnected viewer would leave a thread spinning forever and the
-    server would slowly consume its threadpool. Ending the response instead lets the
-    page's ``onerror`` handler reconnect, which is also the behaviour a viewer wants
-    when the camera comes back.
-    """
+    """Yield multipart JPEG parts until the pipeline stalls or the client leaves."""
     last = 0
     idle = 0.0
     while not worker.stopped:
