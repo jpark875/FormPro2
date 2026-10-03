@@ -80,6 +80,13 @@ Reference files are JSON with pre-computed angles. Validate a directory with
 - Reference data should be recorded with this pipeline at the same camera angle, so live
   and reference angles share the same measurement bias.
 
+With no recordings yet, generate a simulated starter corpus (a clean squat on a rigid
+skeleton, widened across builds):
+
+```powershell
+python scripts/seed_reference.py
+```
+
 To widen a thin corpus, synthesize other builds from one optimal recording:
 
 ```powershell
